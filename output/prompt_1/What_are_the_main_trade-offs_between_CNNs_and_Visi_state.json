@@ -1,0 +1,17 @@
+{
+  "research_question": "What are the main trade-offs between CNNs and Vision Transformers for medical imaging?",
+  "search_queries": [
+    "CNN vs Vision Transformer medical imaging",
+    "Trade-offs between convolutional neural networks and vision transformers in healthcare",
+    "Vision transformer vs CNN performance in medical image analysis"
+  ],
+  "sources": [],
+  "evidence": [],
+  "themes": [],
+  "contradictions": [],
+  "report_outline": [],
+  "final_report": "",
+  "evaluation": null,
+  "started_at": "2026-03-27T19:59:41.937272+00:00",
+  "completed_at": "2026-03-27T19:59:45.323080+00:00"
+}
