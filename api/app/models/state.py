@@ -1,4 +1,4 @@
-"""Shared state models used by all agents in the research pipeline."""
+"""Pydantic models for the research pipeline shared state."""
 
 from __future__ import annotations
 
@@ -20,67 +20,60 @@ class Confidence(str, Enum):
 # ── Source & Evidence ────────────────────────────────────────────────────────
 
 class Source(BaseModel):
-    """A single retrieved source."""
     title: str
     url: str
     accessed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     credibility_notes: str = ""
-    snippet: str = ""  # raw text extracted from the page
+    snippet: str = ""
 
 
 class Evidence(BaseModel):
-    """An evidence fragment extracted from a source."""
     claim: str
-    source_index: int  # index into SharedState.sources
-    quote: str = ""  # supporting quote from the source
-    relevance: str = ""  # short note on why this matters
+    source_index: int
+    quote: str = ""
+    relevance: str = ""
 
 
-# ── Synthesis models ─────────────────────────────────────────────────────────
+# ── Synthesis ────────────────────────────────────────────────────────────────
 
 class Theme(BaseModel):
-    """A thematic grouping produced by the SynthesisAgent."""
     name: str
     summary: str
-    evidence_indices: list[int] = Field(default_factory=list)  # indices into SharedState.evidence
+    evidence_indices: list[int] = Field(default_factory=list)
     confidence: Confidence = Confidence.MEDIUM
 
 
 class Contradiction(BaseModel):
-    """A disagreement identified across sources."""
     description: str
     evidence_indices: list[int] = Field(default_factory=list)
-    resolution: str = ""  # how the system chose to handle it
+    resolution: str = ""
 
 
 # ── Evaluation ───────────────────────────────────────────────────────────────
 
 class EvaluationScores(BaseModel):
-    coverage: float = Field(0.0, ge=0, le=1, description="Did the report address key parts of the question?")
-    faithfulness: float = Field(0.0, ge=0, le=1, description="Are claims supported by evidence?")
-    hallucination_rate: float = Field(0.0, ge=0, le=1, description="Proportion of unsupported/overstated claims.")
-    usefulness: float = Field(0.0, ge=0, le=1, description="Is the output clear, relevant, decision-supportive?")
+    coverage: float = Field(0.0, ge=0, le=1)
+    faithfulness: float = Field(0.0, ge=0, le=1)
+    hallucination_rate: float = Field(0.0, ge=0, le=1)
+    usefulness: float = Field(0.0, ge=0, le=1)
     reasoning: str = ""
 
 
 # ── Shared State ─────────────────────────────────────────────────────────────
 
 class SharedState(BaseModel):
-    """Central state object shared across all agents."""
-
-    # Input
     research_question: str = ""
 
-    # SearchAgent outputs
+    # SearchAgent
     search_queries: list[str] = Field(default_factory=list)
     sources: list[Source] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
 
-    # SynthesisAgent outputs
+    # SynthesisAgent
     themes: list[Theme] = Field(default_factory=list)
     contradictions: list[Contradiction] = Field(default_factory=list)
 
-    # ReportAgent outputs
+    # ReportAgent
     report_outline: list[str] = Field(default_factory=list)
     final_report: str = ""
 
@@ -92,7 +85,6 @@ class SharedState(BaseModel):
     completed_at: str = ""
 
     def summary(self) -> str:
-        """Human-readable summary of the current state."""
         lines = [
             f"Research Question: {self.research_question}",
             f"Search Queries:    {len(self.search_queries)}",
