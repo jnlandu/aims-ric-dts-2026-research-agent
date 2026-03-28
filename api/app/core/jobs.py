@@ -7,9 +7,10 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 import traceback
 import uuid
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from app.core.pipeline import run_pipeline
 from app.models.api import JobResult, JobStatus
@@ -24,6 +25,21 @@ CompleteCallback = Callable[[str, JobResult], None]    # (job_id, final_result)
 # In-memory store  (thread-safe via the GIL for reads/writes to dict)
 _jobs: Dict[str, JobResult] = {}
 _states: Dict[str, SharedState] = {}
+_events: Dict[str, List[Dict[str, Any]]] = {}
+
+
+def append_job_event(job_id: str, event_type: str, data: dict[str, Any] | None = None) -> None:
+    """Append a reasoning event to the job's event log."""
+    _events.setdefault(job_id, []).append({
+        "type": event_type,
+        "data": data or {},
+        "timestamp": time.time(),
+    })
+
+
+def get_job_events(job_id: str, after: int = 0) -> list[dict[str, Any]]:
+    """Return events for a job, optionally starting after a given index."""
+    return _events.get(job_id, [])[after:]
 
 
 def create_job(
@@ -88,12 +104,18 @@ def _run_job(
 ) -> None:
     """Execute the pipeline in a background thread and update job status."""
     job = _jobs[job_id]
+
+    def on_event(event_type: str, data: dict[str, Any] | None = None) -> None:
+        append_job_event(job_id, event_type, data)
+
     try:
+        append_job_event(job_id, "job_created", {"question": question})
         _set_status(job, job_id, JobStatus.SEARCHING, on_progress)
         state = run_pipeline(
             question,
             output_dir=f"output/{job_id}",
             on_stage=lambda stage: _set_status(job, job_id, stage, on_progress),
+            on_event=on_event,
         )
 
         job.report = state.final_report
@@ -103,11 +125,13 @@ def _run_job(
         job.themes_count = len(state.themes)
         _states[job_id] = state
         _set_status(job, job_id, JobStatus.COMPLETED, on_progress)
+        append_job_event(job_id, "job_completed")
         logger.info("Job %s completed", job_id)
 
     except Exception as exc:
         job.error = str(exc)
         _set_status(job, job_id, JobStatus.FAILED, on_progress)
+        append_job_event(job_id, "job_failed", {"error": str(exc)})
         logger.error("Job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
 
     finally:

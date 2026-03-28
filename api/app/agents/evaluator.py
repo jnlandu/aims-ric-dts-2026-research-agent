@@ -11,9 +11,12 @@ from app.models.state import EvaluationScores, SharedState
 logger = logging.getLogger(__name__)
 
 
-def run(state: SharedState) -> SharedState:
+def run(state: SharedState, on_event=None) -> SharedState:
     logger.info("Evaluator: starting...")
     client = get_client()
+
+    if on_event:
+        on_event("stage_started", {"stage": "evaluation"})
 
     if not state.final_report:
         logger.warning("No report to evaluate.")
@@ -69,6 +72,14 @@ def run(state: SharedState) -> SharedState:
                 state.evaluation.hallucination_rate,
                 state.evaluation.usefulness,
             )
+            if on_event:
+                on_event("evaluation_completed", {
+                    "coverage": state.evaluation.coverage,
+                    "faithfulness": state.evaluation.faithfulness,
+                    "hallucination_rate": state.evaluation.hallucination_rate,
+                    "usefulness": state.evaluation.usefulness,
+                    "reasoning": state.evaluation.reasoning,
+                })
         except (ValueError, TypeError) as exc:
             logger.warning("Could not parse evaluation scores: %s", exc)
     else:

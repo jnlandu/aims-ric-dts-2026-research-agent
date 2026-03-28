@@ -92,9 +92,12 @@ def _write_report(client, state: SharedState) -> str:
     return chat(client, system, user)
 
 
-def run(state: SharedState) -> SharedState:
+def run(state: SharedState, on_event=None) -> SharedState:
     logger.info("ReportAgent: starting...")
     client = get_client()
+
+    if on_event:
+        on_event("stage_started", {"stage": "report"})
 
     if not state.themes:
         logger.warning("No themes to report on.")
@@ -102,8 +105,12 @@ def run(state: SharedState) -> SharedState:
 
     state.report_outline = _generate_outline(client, state)
     logger.info("Outline: %s", state.report_outline)
+    if on_event:
+        on_event("report_outline_generated", {"outline": state.report_outline})
 
     state.final_report = _write_report(client, state)
     logger.info("Report generated (%d chars)", len(state.final_report))
+    if on_event:
+        on_event("report_generated", {"length": len(state.final_report), "preview": state.final_report[:500]})
 
     return state

@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+import asyncio
+import json
 
-from app.core.jobs import create_job, get_job, get_job_state, list_jobs
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+
+from app.core.jobs import create_job, get_job, get_job_events, get_job_state, list_jobs
 from app.models.api import JobResponse, JobResult, ResearchRequest
 
 router = APIRouter(tags=["research"])
@@ -125,6 +129,35 @@ def get_reasoning(job_id: str):
 def list_research():
     """List all research jobs."""
     return list_jobs()
+
+
+@router.get("/research/{job_id}/events")
+async def stream_events(job_id: str):
+    """Stream reasoning events for a job via Server-Sent Events.
+
+    The client subscribes and receives structured events as they happen.
+    The stream closes when the job completes or fails.
+    """
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    async def event_generator():
+        cursor = 0
+        while True:
+            events = get_job_events(job_id, after=cursor)
+            for event in events:
+                yield f"data: {json.dumps(event)}\n\n"
+                cursor += 1
+                if event["type"] in ("job_completed", "job_failed"):
+                    return
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/health")

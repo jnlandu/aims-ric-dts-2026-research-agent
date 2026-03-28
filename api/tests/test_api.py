@@ -269,3 +269,54 @@ class TestWhatsAppHelpers:
         callback("j1", JobStatus.COMPLETED)
         callback("j1", JobStatus.FAILED)
         mock_send.assert_not_called()
+
+
+class TestReasoningEndpoint:
+    @patch("app.api.routes.get_job_state")
+    @patch("app.api.routes.get_job")
+    def test_reasoning_returns_steps(self, mock_get, mock_state):
+        from app.models.state import SharedState, Source, Evidence, Theme, Confidence
+
+        state = SharedState(research_question="Q")
+        state.search_queries = ["q1", "q2"]
+        state.sources = [Source(title="S1", url="http://s1.com", snippet="...")]
+        state.evidence = [Evidence(claim="C1", source_index=0, quote="Q1", relevance="R1")]
+        state.themes = [Theme(name="T1", summary="S1", evidence_indices=[0], confidence=Confidence.HIGH)]
+
+        mock_get.return_value = JobResult(job_id="r1", status=JobStatus.COMPLETED, question="Q")
+        mock_state.return_value = state
+
+        resp = client.get("/api/research/r1/reasoning")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["available"] is True
+        assert len(data["steps"]) >= 3  # queries, sources, evidence, themes
+
+    @patch("app.api.routes.get_job")
+    def test_reasoning_not_found(self, mock_get):
+        mock_get.return_value = None
+        resp = client.get("/api/research/none/reasoning")
+        assert resp.status_code == 404
+
+
+class TestSSEEventsEndpoint:
+    @patch("app.api.routes.get_job")
+    @patch("app.api.routes.get_job_events")
+    def test_events_stream(self, mock_events, mock_get):
+        mock_get.return_value = JobResult(job_id="e1", status=JobStatus.COMPLETED, question="Q")
+        mock_events.return_value = [
+            {"type": "stage_started", "data": {"stage": "search"}, "timestamp": 1.0},
+            {"type": "job_completed", "data": {}, "timestamp": 2.0},
+        ]
+
+        resp = client.get("/api/research/e1/events")
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        lines = resp.text.strip().split("\n\n")
+        assert len(lines) >= 2
+
+    @patch("app.api.routes.get_job")
+    def test_events_not_found(self, mock_get):
+        mock_get.return_value = None
+        resp = client.get("/api/research/none/events")
+        assert resp.status_code == 404

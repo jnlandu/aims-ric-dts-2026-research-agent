@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import logging
 import textwrap
+import time
 
 import httpx
 from bs4 import BeautifulSoup
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 from app.core import config
 from app.core.llm import get_client, chat, chat_json
@@ -35,13 +36,18 @@ def _fetch_page_text(url: str) -> str:
 
 
 def _search_web(query: str, max_results: int = config.MAX_RESULTS_PER_QUERY) -> list[dict]:
-    """Run a DuckDuckGo search and return result dicts."""
-    try:
-        with DDGS() as ddgs:
-            return list(ddgs.text(query, max_results=max_results))
-    except Exception as exc:
-        logger.warning("Search failed for '%s': %s", query, exc)
-        return []
+    """Run a DuckDuckGo search and return result dicts (with retry)."""
+    for attempt in range(3):
+        try:
+            results = list(DDGS().text(query, max_results=max_results))
+            if results:
+                return results
+            logger.warning("Empty results for '%s' (attempt %d/3)", query, attempt + 1)
+            time.sleep(1.0 * (attempt + 1))
+        except Exception as exc:
+            logger.warning("Search failed for '%s' (attempt %d/3): %s", query, attempt + 1, exc)
+            time.sleep(1.0 * (attempt + 1))
+    return []
 
 
 # ── Core logic ───────────────────────────────────────────────────────────────
@@ -98,14 +104,19 @@ def _extract_evidence(client, question: str, source: Source) -> list[Evidence]:
 
 # ── Public entry point ───────────────────────────────────────────────────────
 
-def run(state: SharedState) -> SharedState:
+def run(state: SharedState, on_event=None) -> SharedState:
     """Execute the SearchAgent stage: discover sources and extract evidence."""
     logger.info("SearchAgent: starting...")
     client = get_client()
 
+    if on_event:
+        on_event("stage_started", {"stage": "search"})
+
     # 1. Generate search queries
     state.search_queries = _generate_queries(client, state.research_question)
     logger.info("Generated %d search queries", len(state.search_queries))
+    if on_event:
+        on_event("search_queries_generated", {"queries": state.search_queries})
 
     # 2. Search the web
     seen_urls: set[str] = set()
@@ -124,6 +135,11 @@ def run(state: SharedState) -> SharedState:
                 )
             )
     logger.info("Found %d unique sources", len(state.sources))
+    if on_event:
+        on_event("sources_found", {
+            "count": len(state.sources),
+            "sources": [{"title": s.title, "url": s.url} for s in state.sources[:10]],
+        })
 
     # 3. Fetch full content and extract evidence
     for i, source in enumerate(state.sources):
@@ -138,4 +154,9 @@ def run(state: SharedState) -> SharedState:
         state.evidence.extend(evidence)
 
     logger.info("Extracted %d evidence fragments", len(state.evidence))
+    if on_event:
+        on_event("evidence_extracted", {
+            "count": len(state.evidence),
+            "samples": [e.claim for e in state.evidence[:5]],
+        })
     return state

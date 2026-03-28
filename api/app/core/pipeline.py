@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from app.agents import search, synthesis, report, evaluator
 from app.models.api import JobStatus
@@ -18,6 +18,7 @@ def run_pipeline(
     question: str,
     output_dir: str | None = "output",
     on_stage: Optional[Callable[[JobStatus], None]] = None,
+    on_event: Optional[Callable[[str, dict[str, Any] | None], None]] = None,
 ) -> SharedState:
     """Run the full research pipeline for a given question.
 
@@ -32,21 +33,24 @@ def run_pipeline(
     state = SharedState(research_question=question)
     logger.info("Pipeline started | question=%s", question)
 
+    if on_event:
+        on_event("pipeline_started", {"question": question})
+
     if on_stage:
         on_stage(JobStatus.SEARCHING)
-    state = search.run(state)
+    state = search.run(state, on_event=on_event)
 
     if on_stage:
         on_stage(JobStatus.SYNTHESISING)
-    state = synthesis.run(state)
+    state = synthesis.run(state, on_event=on_event)
 
     if on_stage:
         on_stage(JobStatus.REPORTING)
-    state = report.run(state)
+    state = report.run(state, on_event=on_event)
 
     if on_stage:
         on_stage(JobStatus.EVALUATING)
-    state = evaluator.run(state)
+    state = evaluator.run(state, on_event=on_event)
 
     state.completed_at = datetime.now(timezone.utc).isoformat()
 
