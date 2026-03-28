@@ -36,6 +36,20 @@ export interface JobResult {
   error: string;
 }
 
+export interface ReasoningStep {
+  stage: string;
+  title: string;
+  description: string;
+  data: unknown;
+}
+
+export interface ReasoningResponse {
+  job_id: string;
+  status: JobStatus;
+  available: boolean;
+  steps: ReasoningStep[];
+}
+
 // ── API calls ───────────────────────────────────────────────────────────────
 
 export async function submitResearch(question: string): Promise<JobResponse> {
@@ -53,6 +67,15 @@ export async function submitResearch(question: string): Promise<JobResponse> {
 
 export async function getJob(jobId: string): Promise<JobResult> {
   const res = await fetch(`${API_BASE}/api/research/${jobId}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function getReasoning(jobId: string): Promise<ReasoningResponse> {
+  const res = await fetch(`${API_BASE}/api/research/${jobId}/reasoning`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${res.status})`);

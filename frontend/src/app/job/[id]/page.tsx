@@ -1,11 +1,29 @@
 "use client";
 
-import { use } from "react";
+import { use, useState } from "react";
 import Link from "next/link";
 import { useJobPoller } from "@/hooks/useJobPoller";
 import StatusBadge, { StatusStepper } from "@/components/StatusBadge";
 import ScoreCard from "@/components/ScoreCard";
 import ReportView from "@/components/ReportView";
+import ReasoningPanel from "@/components/ReasoningPanel";
+import type { JobResult } from "@/lib/api";
+
+function downloadReport(job: JobResult) {
+  const slug = job.question
+    .slice(0, 50)
+    .replace(/[^a-zA-Z0-9 _-]/g, "")
+    .trim()
+    .replace(/\s+/g, "_");
+  const filename = `${slug}_report.md`;
+  const blob = new Blob([job.report], { type: "text/markdown" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function JobPage({
   params,
@@ -14,6 +32,7 @@ export default function JobPage({
 }) {
   const { id } = use(params);
   const { job, error } = useJobPoller(id);
+  const [showReasoning, setShowReasoning] = useState(false);
 
   if (error) {
     return (
@@ -75,6 +94,31 @@ export default function JobPage({
 
       {/* Evaluation scores */}
       {job.evaluation && <ScoreCard evaluation={job.evaluation} />}
+
+      {/* Action bar */}
+      {job.status === "completed" && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => downloadReport(job)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
+          >
+            ⬇ Download report
+          </button>
+          <button
+            onClick={() => setShowReasoning(!showReasoning)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
+          >
+            {showReasoning ? "🔼 Hide reasoning" : "🧠 Show reasoning steps"}
+          </button>
+        </div>
+      )}
+
+      {/* Reasoning panel */}
+      {showReasoning && (
+        <div className="rounded-lg bg-gray-800/50 border border-gray-700 p-4">
+          <ReasoningPanel jobId={job.job_id} />
+        </div>
+      )}
 
       {/* Report */}
       {job.report && (

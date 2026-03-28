@@ -13,6 +13,7 @@ from typing import Callable, Dict, Optional
 
 from app.core.pipeline import run_pipeline
 from app.models.api import JobResult, JobStatus
+from app.models.state import SharedState
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,7 @@ CompleteCallback = Callable[[str, JobResult], None]    # (job_id, final_result)
 
 # In-memory store  (thread-safe via the GIL for reads/writes to dict)
 _jobs: Dict[str, JobResult] = {}
+_states: Dict[str, SharedState] = {}
 
 
 def create_job(
@@ -51,6 +53,11 @@ def create_job(
 def get_job(job_id: str) -> JobResult | None:
     """Get job status and result by ID."""
     return _jobs.get(job_id)
+
+
+def get_job_state(job_id: str) -> SharedState | None:
+    """Get the full pipeline state (reasoning details) for a completed job."""
+    return _states.get(job_id)
 
 
 def list_jobs() -> list[JobResult]:
@@ -94,6 +101,7 @@ def _run_job(
         job.sources_count = len(state.sources)
         job.evidence_count = len(state.evidence)
         job.themes_count = len(state.themes)
+        _states[job_id] = state
         _set_status(job, job_id, JobStatus.COMPLETED, on_progress)
         logger.info("Job %s completed", job_id)
 
