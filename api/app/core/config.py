@@ -5,9 +5,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── LLM (Groq) ──────────────────────────────────────────────────────────────
-GROQ_API_KEY="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"
+# ── LLM Provider ─────────────────────────────────────────────────────────────
+# "groq" | "huggingface" | "auto"  (auto = try Groq first, fallback to HF)
+LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "auto")
+
+# ── Groq ─────────────────────────────────────────────────────────────────────
+GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+# ── HuggingFace Inference API ────────────────────────────────────────────────
+HF_TOKEN: str = os.getenv("HF_TOKEN", "")
+HF_MODEL: str = os.getenv("HF_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
+
+# ── Shared LLM settings ─────────────────────────────────────────────────────
 TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.3"))
 
 # ── Search ───────────────────────────────────────────────────────────────────
