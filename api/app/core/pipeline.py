@@ -5,14 +5,20 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable, Optional
 
 from app.agents import search, synthesis, report, evaluator
+from app.models.api import JobStatus
 from app.models.state import SharedState
 
 logger = logging.getLogger(__name__)
 
 
-def run_pipeline(question: str, output_dir: str | None = "output") -> SharedState:
+def run_pipeline(
+    question: str,
+    output_dir: str | None = "output",
+    on_stage: Optional[Callable[[JobStatus], None]] = None,
+) -> SharedState:
     """Run the full research pipeline for a given question.
 
     Stages:
@@ -26,9 +32,20 @@ def run_pipeline(question: str, output_dir: str | None = "output") -> SharedStat
     state = SharedState(research_question=question)
     logger.info("Pipeline started | question=%s", question)
 
+    if on_stage:
+        on_stage(JobStatus.SEARCHING)
     state = search.run(state)
+
+    if on_stage:
+        on_stage(JobStatus.SYNTHESISING)
     state = synthesis.run(state)
+
+    if on_stage:
+        on_stage(JobStatus.REPORTING)
     state = report.run(state)
+
+    if on_stage:
+        on_stage(JobStatus.EVALUATING)
     state = evaluator.run(state)
 
     state.completed_at = datetime.now(timezone.utc).isoformat()
