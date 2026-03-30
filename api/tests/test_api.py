@@ -320,3 +320,53 @@ class TestSSEEventsEndpoint:
         mock_get.return_value = None
         resp = client.get("/api/research/none/events")
         assert resp.status_code == 404
+
+
+class TestAuthentication:
+    """API key authentication tests.
+
+    We temporarily patch config.API_KEY to simulate a server with auth enabled.
+    """
+
+    @patch("app.api.auth.config")
+    def test_missing_key_returns_401(self, mock_cfg):
+        mock_cfg.API_KEY = "secret-key"
+        resp = client.post("/api/research", json={"question": "Q"})
+        assert resp.status_code == 401
+
+    @patch("app.api.auth.config")
+    def test_wrong_key_returns_403(self, mock_cfg):
+        mock_cfg.API_KEY = "secret-key"
+        resp = client.post(
+            "/api/research",
+            json={"question": "Q"},
+            headers={"X-API-Key": "wrong-key"},
+        )
+        assert resp.status_code == 403
+
+    @patch("app.api.routes.create_job")
+    @patch("app.api.auth.config")
+    def test_correct_key_returns_202(self, mock_cfg, mock_create):
+        mock_cfg.API_KEY = "secret-key"
+        mock_create.return_value = JobResult(
+            job_id="auth01", status=JobStatus.PENDING, question="Q"
+        )
+        resp = client.post(
+            "/api/research",
+            json={"question": "Q"},
+            headers={"X-API-Key": "secret-key"},
+        )
+        assert resp.status_code == 202
+
+    @patch("app.api.auth.config")
+    def test_empty_key_config_allows_all(self, mock_cfg):
+        """When API_KEY is not set, all requests pass through (dev mode)."""
+        mock_cfg.API_KEY = ""
+        resp = client.post("/api/research", json={"question": "   "})
+        # Still gets 400 because question is blank — not 401
+        assert resp.status_code == 400
+
+    def test_health_requires_no_key(self):
+        """Health endpoint is always open."""
+        resp = client.get("/api/health")
+        assert resp.status_code == 200

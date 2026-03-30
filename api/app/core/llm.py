@@ -19,7 +19,7 @@ from app.core import config
 logger = logging.getLogger(__name__)
 
 _MAX_RETRIES = 3
-_RETRY_BACKOFF = (1, 3, 10)
+_RETRY_BACKOFF = (1, 3)
 
 
 # ── Provider abstraction ────────────────────────────────────────────────────
@@ -87,6 +87,7 @@ def _make_client(provider: str) -> LLMClient:
 def get_client() -> LLMClient:
     """Return a configured LLM client based on LLM_PROVIDER setting."""
     provider = config.LLM_PROVIDER
+    print(f"Configuring LLM client | provider={provider}")
     if provider == "auto":
         # Prefer Groq if key is set, otherwise HF
         if config.GROQ_API_KEY:

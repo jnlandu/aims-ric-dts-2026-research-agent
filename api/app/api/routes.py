@@ -5,16 +5,20 @@ from __future__ import annotations
 import asyncio
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
+from app.api.auth import require_api_key
 from app.core.jobs import create_job, get_job, get_job_events, get_job_state, list_jobs
 from app.models.api import JobResponse, JobResult, ResearchRequest
 
 router = APIRouter(tags=["research"])
 
+# Dependency shorthand applied to protected routes
+_auth = Depends(require_api_key)
 
-@router.post("/research", response_model=JobResponse, status_code=202)
+
+@router.post("/research", response_model=JobResponse, status_code=202, dependencies=[_auth])
 def submit_research(req: ResearchRequest):
     """Submit a research question. Returns a job ID immediately.
 
@@ -27,7 +31,7 @@ def submit_research(req: ResearchRequest):
     return JobResponse(job_id=job.job_id, status=job.status, question=job.question)
 
 
-@router.get("/research/{job_id}", response_model=JobResult)
+@router.get("/research/{job_id}", response_model=JobResult, dependencies=[_auth])
 def get_research(job_id: str):
     """Get the status and result of a research job."""
     job = get_job(job_id)
@@ -36,7 +40,7 @@ def get_research(job_id: str):
     return job
 
 
-@router.get("/research/{job_id}/reasoning")
+@router.get("/research/{job_id}/reasoning", dependencies=[_auth])
 def get_reasoning(job_id: str):
     """Get the full reasoning steps for a completed job.
 
@@ -125,13 +129,13 @@ def get_reasoning(job_id: str):
     }
 
 
-@router.get("/research", response_model=list[JobResult])
+@router.get("/research", response_model=list[JobResult], dependencies=[_auth])
 def list_research():
     """List all research jobs."""
     return list_jobs()
 
 
-@router.get("/research/{job_id}/events")
+@router.get("/research/{job_id}/events", dependencies=[_auth])
 async def stream_events(job_id: str):
     """Stream reasoning events for a job via Server-Sent Events.
 

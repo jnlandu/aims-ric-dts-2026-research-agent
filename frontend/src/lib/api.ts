@@ -1,5 +1,14 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** Sent with every request if the env var is set. */
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "";
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return API_KEY
+    ? { "X-API-Key": API_KEY, ...extra }
+    : { ...extra };
+}
+
 // ── Types matching the FastAPI models ───────────────────────────────────────
 
 export type JobStatus =
@@ -55,7 +64,7 @@ export interface ReasoningResponse {
 export async function submitResearch(question: string): Promise<JobResponse> {
   const res = await fetch(`${API_BASE}/api/research`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ question }),
   });
   if (!res.ok) {
@@ -66,7 +75,9 @@ export async function submitResearch(question: string): Promise<JobResponse> {
 }
 
 export async function getJob(jobId: string): Promise<JobResult> {
-  const res = await fetch(`${API_BASE}/api/research/${jobId}`);
+  const res = await fetch(`${API_BASE}/api/research/${jobId}`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${res.status})`);
@@ -75,7 +86,9 @@ export async function getJob(jobId: string): Promise<JobResult> {
 }
 
 export async function getReasoning(jobId: string): Promise<ReasoningResponse> {
-  const res = await fetch(`${API_BASE}/api/research/${jobId}/reasoning`);
+  const res = await fetch(`${API_BASE}/api/research/${jobId}/reasoning`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${res.status})`);
@@ -84,7 +97,9 @@ export async function getReasoning(jobId: string): Promise<ReasoningResponse> {
 }
 
 export async function listJobs(): Promise<JobResult[]> {
-  const res = await fetch(`${API_BASE}/api/research`);
+  const res = await fetch(`${API_BASE}/api/research`, {
+    headers: authHeaders(),
+  });
   if (!res.ok) {
     throw new Error(`Request failed (${res.status})`);
   }
