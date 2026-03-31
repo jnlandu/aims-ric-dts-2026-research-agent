@@ -17,6 +17,8 @@ from typing import Any, Callable, Dict, List, Optional
 from app.core.pipeline import run_pipeline
 from app.core.store import (
     db_append_event,
+    db_clear_all_jobs,
+    db_delete_job,
     db_get_events,
     db_get_job,
     db_get_state,
@@ -95,6 +97,20 @@ def get_job_state(job_id: str) -> SharedState | None:
 def list_jobs() -> list[JobResult]:
     """List all jobs (most recent first) from DB."""
     return db_list_jobs()
+
+
+def delete_job(job_id: str) -> bool:
+    """Delete a single job and its data. Returns True if the job existed."""
+    _jobs_cache.pop(job_id, None)
+    _event_counts.pop(job_id, None)
+    return db_delete_job(job_id)
+
+
+def clear_all_jobs() -> int:
+    """Delete all jobs and their data. Returns the number deleted."""
+    _jobs_cache.clear()
+    _event_counts.clear()
+    return db_clear_all_jobs()
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────

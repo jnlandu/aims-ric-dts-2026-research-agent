@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.api.auth import require_api_key
-from app.core.jobs import create_job, get_job, get_job_events, get_job_state, list_jobs
+from app.core.jobs import clear_all_jobs, create_job, delete_job, get_job, get_job_events, get_job_state, list_jobs
 from app.models.api import JobResponse, JobResult, ResearchRequest
 
 router = APIRouter(tags=["research"])
@@ -133,6 +133,22 @@ def get_reasoning(job_id: str):
 def list_research():
     """List all research jobs."""
     return list_jobs()
+
+
+@router.delete("/research", status_code=200, dependencies=[_auth])
+def clear_research():
+    """Delete all research jobs and their data."""
+    count = clear_all_jobs()
+    return {"deleted": count}
+
+
+@router.delete("/research/{job_id}", status_code=200, dependencies=[_auth])
+def delete_research(job_id: str):
+    """Delete a single research job and its data."""
+    found = delete_job(job_id)
+    if not found:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return {"deleted": job_id}
 
 
 @router.get("/research/{job_id}/events", dependencies=[_auth])

@@ -106,6 +106,27 @@ export async function listJobs(): Promise<JobResult[]> {
   return res.json();
 }
 
+export async function deleteJob(jobId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/research/${jobId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed (${res.status})`);
+  }
+}
+
+export async function clearAllJobs(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/research`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    throw new Error(`Request failed (${res.status})`);
+  }
+}
+
 export async function checkHealth(): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/api/health`);
   return res.json();
