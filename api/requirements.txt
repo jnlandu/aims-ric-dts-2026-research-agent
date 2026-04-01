@@ -9,3 +9,7 @@ python-dotenv>=1.0.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 openai>=1.0.0
+markdown>=3.0.0
+pytest>=7.0.0
+pytest-asyncio>=0.20.0
+weasyprint
