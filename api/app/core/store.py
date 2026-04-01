@@ -16,6 +16,7 @@ import json
 import logging
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator
@@ -96,8 +97,8 @@ def db_upsert_job(job: JobResult) -> None:
                 job_id, status, question, report, error,
                 sources_count, evidence_count, themes_count,
                 eval_coverage, eval_faithfulness, eval_hallucination,
-                eval_usefulness, eval_reasoning
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                eval_usefulness, eval_reasoning, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(job_id) DO UPDATE SET
                 status            = excluded.status,
                 report            = excluded.report,
@@ -120,6 +121,7 @@ def db_upsert_job(job: JobResult) -> None:
                 ev.hallucination_rate if ev else None,
                 ev.usefulness if ev else None,
                 ev.reasoning if ev else None,
+                time.time(),
             ),
         )
         conn.commit()
