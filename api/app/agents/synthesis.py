@@ -98,9 +98,12 @@ def _identify_contradictions(client, state: SharedState) -> list[Contradiction]:
     ]
 
 
-def run(state: SharedState) -> SharedState:
+def run(state: SharedState, on_event=None) -> SharedState:
     logger.info("SynthesisAgent: starting...")
     client = get_client()
+
+    if on_event:
+        on_event("stage_started", {"stage": "synthesis"})
 
     if not state.evidence:
         logger.warning("No evidence to synthesise.")
@@ -108,8 +111,18 @@ def run(state: SharedState) -> SharedState:
 
     state.themes = _identify_themes(client, state)
     logger.info("Identified %d themes", len(state.themes))
+    if on_event:
+        on_event("themes_identified", {
+            "count": len(state.themes),
+            "themes": [{"name": t.name, "summary": t.summary, "confidence": t.confidence.value} for t in state.themes],
+        })
 
     state.contradictions = _identify_contradictions(client, state)
     logger.info("Found %d contradictions", len(state.contradictions))
+    if on_event:
+        on_event("contradictions_identified", {
+            "count": len(state.contradictions),
+            "contradictions": [{"description": c.description, "resolution": c.resolution} for c in state.contradictions],
+        })
 
     return state

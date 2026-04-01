@@ -14,37 +14,64 @@ logger = logging.getLogger(__name__)
 def _build_context(state: SharedState) -> str:
     sections: list[str] = []
 
+    # ── Deduplicate sources by URL ───────────────────────────────────────────
+    # Build a mapping: original source index → deduplicated source number
+    url_to_dedup: dict[str, int] = {}
+    dedup_sources: list = []
+    orig_to_dedup: dict[int, int] = {}
+
+    for i, src in enumerate(state.sources):
+        if src.url not in url_to_dedup:
+            dedup_idx = len(dedup_sources)
+            url_to_dedup[src.url] = dedup_idx
+            dedup_sources.append(src)
+        orig_to_dedup[i] = url_to_dedup[src.url]
+
+    # Helper to translate evidence indices to deduplicated source numbers
+    def _evidence_source_refs(evidence_indices: list[int]) -> str:
+        src_nums = sorted({
+            orig_to_dedup.get(state.evidence[ei].source_index, 0)
+            for ei in evidence_indices
+            if ei < len(state.evidence)
+        })
+        return ", ".join(str(n) for n in src_nums)
+
     sections.append("## Themes")
     for i, t in enumerate(state.themes):
-        refs = ", ".join(str(idx) for idx in t.evidence_indices)
+        refs = _evidence_source_refs(t.evidence_indices)
         sections.append(
             f"### Theme {i+1}: {t.name} (confidence: {t.confidence.value})\n"
             f"{t.summary}\n"
-            f"Supporting evidence indices: [{refs}]"
+            f"Sources: [{refs}]"
         )
 
     if state.contradictions:
         sections.append("\n## Contradictions")
         for c in state.contradictions:
-            refs = ", ".join(str(idx) for idx in c.evidence_indices)
+            refs = _evidence_source_refs(c.evidence_indices)
             sections.append(
-                f"- {c.description} (evidence: [{refs}])\n"
+                f"- {c.description} (sources: [{refs}])\n"
                 f"  Resolution: {c.resolution}"
             )
 
     sections.append("\n## Evidence")
     for i, ev in enumerate(state.evidence):
-        src = state.sources[ev.source_index] if ev.source_index < len(state.sources) else None
-        src_label = f"{src.title} — {src.url}" if src else "unknown"
+        src_num = orig_to_dedup.get(ev.source_index, 0)
+        src = dedup_sources[src_num] if src_num < len(dedup_sources) else None
+        src_label = f"[{src_num}] {src.title}" if src else "unknown"
         sections.append(
-            f"[{i}] {ev.claim}\n"
+            f"- {ev.claim}\n"
             f"    Quote: \"{ev.quote}\"\n"
             f"    Source: {src_label}"
         )
 
     sections.append("\n## Sources")
-    for i, src in enumerate(state.sources):
-        sections.append(f"[{i}] {src.title} — {src.url} (accessed {src.accessed_at})")
+    for i, src in enumerate(dedup_sources):
+        line = f"[{i}] {src.title} — {src.url} (accessed {src.accessed_at})"
+        if src.images:
+            img_list = "  ".join(src.images[:5])
+            line += f"\n    Images: {img_list}"
+        sections.append(line)
 
     return "\n".join(sections)
 
@@ -75,14 +102,37 @@ def _write_report(client, state: SharedState) -> str:
         research report in Markdown following the outline provided.
 
         Requirements:
-        - Every major claim MUST cite its source using numbered references
-          like [1], [2], etc. matching the source numbers provided.
+        - Every major claim MUST cite its source using the numbered references
+          from the Sources list, e.g. [1], [2]. Each number maps to a unique
+          URL — do NOT duplicate references. Only use source numbers that
+          appear in the provided Sources list.
+        - The References section at the end must list each source ONCE in the
+          format:  [n] Author/Title. URL
+          Do not repeat the same source under different numbers.
         - Include a Limitations section acknowledging gaps and uncertainties.
         - Where sources disagree, present both perspectives fairly.
         - Do NOT invent claims beyond the evidence provided.
         - Use formal, clear academic language.
-        - End with a References section listing all cited sources with URLs.
         - The report should be thorough but concise (aim for 1500-2500 words).
+        - Some sources include image URLs. When an image is directly relevant
+          to the discussion (e.g. architecture diagrams, result charts,
+          comparison tables), embed it in the report using Markdown syntax:
+          ![description](image_url)
+          Only include images that genuinely illustrate a point. Do not embed
+          every available image — pick the 2-5 most informative ones.
+        - Where it adds value, include Mermaid diagrams to illustrate
+          relationships, processes, comparisons, or taxonomies. Use fenced
+          code blocks with the language tag "mermaid", for example:
+
+          ```mermaid
+          flowchart LR
+            A[Input] --> B[Process] --> C[Output]
+          ```
+
+          Good uses: concept maps linking themes, flowcharts of processes,
+          comparison tables (as flowcharts), and timelines. Only include a
+          diagram when it genuinely clarifies the content — do not force one
+          into every section. Aim for 1-3 diagrams total.
     """)
     user = (
         f"Research question: {state.research_question}\n\n"
@@ -92,9 +142,12 @@ def _write_report(client, state: SharedState) -> str:
     return chat(client, system, user)
 
 
-def run(state: SharedState) -> SharedState:
+def run(state: SharedState, on_event=None) -> SharedState:
     logger.info("ReportAgent: starting...")
     client = get_client()
+
+    if on_event:
+        on_event("stage_started", {"stage": "report"})
 
     if not state.themes:
         logger.warning("No themes to report on.")
@@ -102,8 +155,12 @@ def run(state: SharedState) -> SharedState:
 
     state.report_outline = _generate_outline(client, state)
     logger.info("Outline: %s", state.report_outline)
+    if on_event:
+        on_event("report_outline_generated", {"outline": state.report_outline})
 
     state.final_report = _write_report(client, state)
     logger.info("Report generated (%d chars)", len(state.final_report))
+    if on_event:
+        on_event("report_generated", {"length": len(state.final_report), "preview": state.final_report[:500]})
 
     return state
