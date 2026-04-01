@@ -87,10 +87,14 @@
 }
 
 \author[1]{\textbf{Jérémie N. Landu}}
+\author[1]{\textbf{Samuler Kargbo}}
+\author[1]{\textbf{Cecilia Akyeampong}}
+\author[1]{\textbf{Abigail Nunoo}}
+\author[1]{\textbf{Lambert}}
 \affil[1]{%
   African Institute for Mathematical Sciences\\
   Research Innovation Centre (AIMS-RIC)\\
-  \texttt{jeremy@aimsammi.org}
+  Doctoral Training School 2026
 }
 
 \date{}
@@ -143,6 +147,19 @@ structured, reproducible process.
   \item Deliver everything through a clean web UI with real-time feedback.
 \end{itemize}
 
+\medskip
+\noindent\textbf{Scope and demo context.}
+ML-ESS is presented as a \emph{working demonstration prototype}, built and
+evaluated in the context of the AIMS-RIC Doctoral Training School 2026. As
+such, it prioritises \emph{clarity}, \emph{modularity}, and
+\emph{reproducibility} over production hardening. Every architectural decision
+— sequential agents, a single SQLite database, plain Python threading — was
+made to keep the system fully understandable in a classroom setting, while
+deliberately leaving well-defined extension points for future work. The
+prototype can be run end-to-end on a laptop with a single API key, and each
+component can be swapped or augmented independently without touching the rest
+of the pipeline.
+
 % =============================================================================
 \section{System Architecture}
 % =============================================================================
@@ -155,7 +172,7 @@ user interface. Figure~\ref{fig:arch} illustrates the high-level architecture.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-1.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-1.png}
   \caption{High-level system architecture.}
   \label{fig:arch}
 \end{figure}
@@ -192,7 +209,7 @@ user submits a question to the delivery of the final report.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-2.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-2.png}
   \caption{Request lifecycle and data flow (sequence diagram).}
   \label{fig:lifecycle}
 \end{figure}
@@ -213,12 +230,19 @@ including the \texttt{Source}, \texttt{Evidence}, \texttt{Theme},
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-3.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-3.png}
   \caption{SharedState class diagram.}
   \label{fig:state}
 \end{figure}
 
 \subsection{Agent Pipeline Flow}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=.5\linewidth]{imgs/report-rendered-4.png}
+  \caption{Agent pipeline flow.}
+  \label{fig:pipeline}
+\end{figure}
 
 The pipeline executes four agents sequentially
 (Figure~\ref{fig:pipeline}):
@@ -233,13 +257,6 @@ The pipeline executes four agents sequentially
   \item \textbf{Evaluator} — scores the report on four quality dimensions.
 \end{enumerate}
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=\linewidth]{../report-rendered-4.png}
-  \caption{Agent pipeline flow.}
-  \label{fig:pipeline}
-\end{figure}
-
 \subsection{Search Agent Detail}
 
 The Search Agent (Figure~\ref{fig:search}) generates up to three search
@@ -250,7 +267,7 @@ to extract structured evidence records.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-5.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-5.png}
   \caption{Search Agent internal data flow.}
   \label{fig:search}
 \end{figure}
@@ -264,7 +281,7 @@ when Groq rate-limits are exhausted.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-6.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-6.png}
   \caption{LLM provider retry and fallback strategy.}
   \label{fig:llm}
 \end{figure}
@@ -305,7 +322,7 @@ record), \texttt{STATES} (full serialised pipeline state), and \texttt{EVENTS}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-7.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-7.png}
   \caption{Entity-relationship diagram.}
   \label{fig:er}
 \end{figure}
@@ -320,19 +337,18 @@ exception.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-8.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-8.png}
   \caption{Job status state machine.}
   \label{fig:states}
 \end{figure}
 
 \subsection{SSE Event Stream}
-
 Figure~\ref{fig:sse} shows the Server-Sent Events (SSE) protocol between the
 frontend and the \texttt{/api/research/\{id\}/events} endpoint.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-9.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-9.png}
   \caption{SSE event stream sequence.}
   \label{fig:sse}
 \end{figure}
@@ -377,14 +393,14 @@ tree; Figure~\ref{fig:fe-flow} shows the frontend data flow.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-10.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-10.png}
   \caption{Frontend page and component tree.}
   \label{fig:fe-tree}
 \end{figure}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-11.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-11.png}
   \caption{Frontend data flow.}
   \label{fig:fe-flow}
 \end{figure}
@@ -433,23 +449,24 @@ Table~\ref{tab:config}.
   \small
   \caption{Key environment variables.}
   \label{tab:config}
-  \begin{tabular}{p{2.6cm} p{1.1cm} p{2.5cm}}
+  \footnotesize
+  \begin{tabular}{p{3.1cm} p{1.1cm} p{2.0cm}}
     \toprule
     \textbf{Variable} & \textbf{Default} & \textbf{Purpose} \\
     \midrule
-    \texttt{LLM\_PROVIDER}         & auto      & groq / huggingface / auto \\
-    \texttt{GROQ\_API\_KEY}        & —         & Primary Groq key \\
-    \texttt{GROQ\_API\_KEY\_2}     & —         & Fallback Groq key \\
-    \texttt{GROQ\_MODEL}           & llama-3.3-70b & Groq model \\
-    \texttt{HF\_TOKEN}             & —         & HuggingFace token \\
-    \texttt{TEMPERATURE}           & 0.3       & LLM temperature \\
-    \texttt{TAVILY\_API\_KEY}      & —         & Premium search \\
-    \texttt{MAX\_SEARCH\_QUERIES}  & 3         & Queries per question \\
-    \texttt{MAX\_RESULTS\_PER\_QUERY} & 5      & Results per query \\
-    \texttt{MAX\_CONTENT\_LENGTH}  & 3000      & Chars per page \\
-    \texttt{API\_KEY}              & —         & Auth key \\
-    \texttt{DB\_PATH}              & data/jobs.db & SQLite location \\
-    \texttt{CORS\_ORIGINS}         & Vercel URL & Allowed origins \\
+    \texttt{LLM\_PROVIDER}            & auto         & groq / hf / auto \\
+    \texttt{GROQ\_API\_KEY}           & —            & Primary Groq key \\
+    \texttt{GROQ\_API\_KEY\_2}        & —            & Fallback Groq key \\
+    \texttt{GROQ\_MODEL}              & llama-3.3-70b & Groq model \\
+    \texttt{HF\_TOKEN}                & —            & HuggingFace token \\
+    \texttt{TEMPERATURE}              & 0.3          & LLM temperature \\
+    \texttt{TAVILY\_API\_KEY}         & —            & Premium search \\
+    \texttt{MAX\_SEARCH\_QUERIES}     & 3            & Queries / question \\
+    \texttt{MAX\_RESULTS\_PER\_QUERY} & 5            & Results / query \\
+    \texttt{MAX\_CONTENT\_LENGTH}     & 3000         & Chars / page \\
+    \texttt{API\_KEY}                 & —            & Auth key \\
+    \texttt{DB\_PATH}                 & data/jobs.db & SQLite path \\
+    \texttt{CORS\_ORIGINS}            & Vercel URL   & Allowed origins \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -467,7 +484,7 @@ workers, Redis job queue, Celery workers, and PostgreSQL).
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-12.png}
+  \includegraphics[width=\linewidth]{imgs/report-rendered-12.png}
   \caption{Current vs.\ scalable deployment architecture.}
   \label{fig:deploy}
 \end{figure}
@@ -480,10 +497,164 @@ frontend, and verify the health endpoint.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=\linewidth]{../report-rendered-13.png}
+  \includegraphics[width=0.78\linewidth]{imgs/report-rendered-13.png}
   \caption{Deployment checklist flowchart.}
   \label{fig:checklist}
 \end{figure}
+
+% =============================================================================
+\section{Related Work}
+% =============================================================================
+
+\paragraph{Autonomous agent frameworks.}
+AutoGPT~\cite{autogpt} and BabyAGI~\cite{babyagi} pioneered open-ended LLM
+agents capable of self-directed task decomposition, but they lack a structured
+evidence-gathering and quality-scoring loop. CrewAI~\cite{crewai} introduces
+role-based multi-agent crews; ML-ESS differs by using a strict linear pipeline
+where each stage produces typed artefacts consumed by the next, making the
+data flow auditable and reproducible.
+
+\paragraph{Retrieval-augmented generation.}
+Lewis \textit{et al.}~\cite{rag} established that grounding LLM generation in
+retrieved passages substantially reduces hallucination. ML-ESS extends this
+pattern: the Search Agent plays the role of the retriever, and the Report
+Agent is conditioned on structured \texttt{Evidence} records rather than raw
+retrieved text, enabling the Evaluator to score faithfulness precisely.
+
+\paragraph{LLM orchestration libraries.}
+LangChain~\cite{langchain} and LlamaIndex provide agent primitives and
+retrieval pipelines. ML-ESS intentionally avoids these dependencies: the
+entire pipeline is implemented in \textasciitilde{}600 lines of plain Python,
+keeping the system transparent, easy to audit, and free of framework-specific
+abstractions.
+
+\paragraph{Commercial research assistants.}
+Perplexity AI and Elicit offer similar research-assistant experiences but are
+closed-source and provide no quality scores or structured intermediate state.
+ML-ESS is fully open, self-hostable, and returns the complete
+\texttt{SharedState} for downstream inspection.
+
+% =============================================================================
+\section{Design Decisions \& Trade-offs}
+% =============================================================================
+
+\subsection{Sequential vs.\ Parallel Agents}
+
+Agents run sequentially because each stage produces the typed artefacts that
+the next stage requires as input: the Synthesis Agent cannot run before
+\texttt{sources} and \texttt{evidence} are populated; the Report Agent cannot
+run before \texttt{themes} exist. Parallelism would require speculative
+execution and complex dependency tracking for negligible gain given that the
+bottleneck is LLM latency, not CPU.
+
+\subsection{SQLite over PostgreSQL}
+
+For a single-process deployment serving one research job at a time, SQLite in
+WAL mode provides adequate write throughput with zero operational overhead (no
+separate database process, no connection pooling). The database schema is
+designed so that all writes during a pipeline run are sequential updates to a
+single row — a pattern SQLite handles efficiently. The scalable architecture
+diagram (Figure~\ref{fig:deploy}) shows the migration path to PostgreSQL when
+horizontal scaling is needed.
+
+\subsection{Threading over Celery}
+
+Background jobs use \texttt{threading.Thread} rather than a Celery/Redis
+worker queue. This avoids adding two additional services (a message broker and
+worker processes) to the deployment footprint, which is appropriate for a
+research prototype. The trade-off is that jobs cannot survive a process restart
+and cannot scale across multiple machines without the architectural changes
+shown in Section~9.
+
+\subsection{LLM Temperature at 0.3}
+
+A temperature of 0.3 is deliberately low. Research synthesis requires
+factual, reproducible outputs: query generation should produce consistent
+search terms for a given question, and evidence extraction should classify
+claims deterministically. A higher temperature introduces variance that makes
+the pipeline harder to debug and evaluate.
+
+\subsection{Dual LLM Provider}
+
+Groq's inference API offers sub-second token generation via custom LPU
+hardware, making it the primary provider. Its free tier has strict per-minute
+rate limits. The HuggingFace Inference API serves as a fallback: slower, but
+with a separate rate-limit bucket. The \texttt{LLM\_PROVIDER=auto} strategy
+automatically selects and fails over between them, insulating the pipeline from
+either provider's availability.
+
+% =============================================================================
+\section{Security Considerations}
+% =============================================================================
+
+\paragraph{Authentication.}
+All API endpoints except \texttt{/api/health} are protected by a static API
+key passed in the \texttt{X-API-Key} header. When \texttt{API\_KEY} is empty
+(the default in development), authentication is disabled. Production deployments
+must set a strong random key.
+
+\paragraph{CORS.}
+The FastAPI application enforces a strict \texttt{CORS\_ORIGINS} allowlist.
+Only the configured frontend origin (typically the Vercel deployment URL) may
+make cross-origin requests, preventing credential leakage to third-party pages.
+
+\paragraph{Input handling.}
+Research questions are passed verbatim to LLM prompts. There is currently no
+sanitisation layer against prompt-injection attacks — a hostile question could
+attempt to override system instructions. A hardened deployment should prepend
+an untrusted-input envelope and validate that the LLM's JSON responses conform
+to the Pydantic schema (which the pipeline already does for structured
+responses).
+
+\paragraph{Secrets management.}
+API keys are loaded from a \texttt{.env} file via \texttt{python-dotenv}.
+That file must not be committed to version control; a \texttt{.gitignore}
+entry is present in the repository.
+
+% =============================================================================
+\section{Limitations \& Future Work}
+% =============================================================================
+
+\subsection{Current Limitations}
+
+\begin{itemize}
+  \item \textbf{No cross-job memory.} Each research job is independent;
+    the system cannot reuse evidence gathered in a previous run on a related
+    question.
+  \item \textbf{LLM-graded evaluation.} The Evaluator scores the report using
+    the same LLM that produced it, introducing a potential circular bias.
+    Human evaluation or a separate judge model would be more reliable.
+  \item \textbf{Synchronous web scraping.} Pages are fetched sequentially
+    with \texttt{httpx}; slow servers can add tens of seconds to the Search
+    Agent phase.
+  \item \textbf{No source credibility verification.} The credibility notes
+    attached to each \texttt{Source} are LLM-generated heuristics, not verified
+    signals (domain authority, publication date, peer review status).
+  \item \textbf{SQLite concurrency ceiling.} WAL mode supports multiple
+    concurrent readers but only one writer. Submitting many jobs simultaneously
+    will queue write operations; under sustained load this becomes a bottleneck.
+\end{itemize}
+
+\subsection{Future Directions}
+
+\begin{itemize}
+  \item \textbf{Streaming LLM output.} Exposing token-by-token SSE events
+    from the Report Agent would allow the frontend to display the report as
+    it is being written, dramatically improving perceived latency.
+  \item \textbf{Parallel scraping.} Replacing sequential \texttt{httpx} calls
+    with \texttt{asyncio.gather} could cut Search Agent latency by $3\times$.
+  \item \textbf{Cross-job knowledge base.} A persistent vector store (e.g.\
+    ChromaDB, pgvector) would allow the Synthesis Agent to retrieve evidence
+    from previous runs, enabling incremental research.
+  \item \textbf{Human-in-the-loop feedback.} A researcher could annotate or
+    reject individual \texttt{Evidence} records before the Report Agent runs,
+    improving output quality for high-stakes use cases.
+  \item \textbf{Independent evaluator model.} Using a second, independent LLM
+    (or a specialised scoring model) as the Evaluator would eliminate the
+    self-grading bias noted above.
+  \item \textbf{Multi-language support.} Adding a translation agent at the
+    output stage would make the system accessible to non-English researchers.
+\end{itemize}
 
 % =============================================================================
 \section{Conclusion}
@@ -494,13 +665,20 @@ automate a complex, knowledge-intensive task end-to-end. By composing four
 focused agents — each with a clear role — the pipeline transforms a single
 natural language question into a cited, evaluated research report in minutes.
 
-The system is designed for clarity and correctness: low LLM temperature for
-deterministic outputs, retry/fallback logic for resilience, persistent job
-state for observability, and a clean typed API for frontend integration. The
-modular agent design makes the system straightforward to extend: adding a new
-research phase (e.g., a fact-checking agent or a translation layer) requires
-only inserting a new agent function into the pipeline and extending
-\texttt{SharedState} with the new fields.
+As a \emph{demo prototype}, the system intentionally favours transparency over
+scale: every component is inspectable, every intermediate artefact is persisted
+in the database, and the full pipeline can be traced from a single research
+question to a scored report without any hidden state. This makes the system
+well-suited as a \emph{teaching platform} and a \emph{starting point} for
+more ambitious extensions.
+
+The modular agent design makes the system straightforward to extend. Adding a
+new research phase — a fact-checking agent, a translation layer, or a
+domain-specific evidence filter — requires only inserting a new agent function
+into the pipeline and extending \texttt{SharedState} with the corresponding
+fields. The REST API and frontend automatically expose the new state without
+further changes. This extensibility is the central design principle of ML-ESS:
+\emph{build a correct, auditable core, then grow it incrementally}.
 
 % =============================================================================
 %  ACKNOWLEDGEMENTS
@@ -539,6 +717,22 @@ Processing Systems}, vol. 33, 2020, pp. 9459--9474.
 
 \bibitem{weasyprint}
 CourtBouillon, \textit{WeasyPrint}, 2024. \url{https://weasyprint.org}
+
+\bibitem{autogpt}
+T. Significant Gravitas, \textit{AutoGPT: An Autonomous GPT-4 Experiment},
+GitHub, 2023. \url{https://github.com/Significant-Gravitas/AutoGPT}
+
+\bibitem{babyagi}
+Y. Nakajima, \textit{BabyAGI}, GitHub, 2023.
+\url{https://github.com/yoheinakajima/babyagi}
+
+\bibitem{crewai}
+J. Moura, \textit{CrewAI: Framework for Orchestrating Role-Playing
+Autonomous AI Agents}, GitHub, 2024. \url{https://github.com/joaomdmoura/crewAI}
+
+\bibitem{langchain}
+H. Chase, \textit{LangChain: Building Applications with LLMs through
+Composability}, GitHub, 2022. \url{https://github.com/langchain-ai/langchain}
 
 \end{thebibliography}
 
