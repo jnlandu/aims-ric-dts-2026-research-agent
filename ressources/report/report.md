@@ -1,7 +1,16 @@
-# ML-ESS: Multi-Agent AI Research Assistant
+---
+title: "AIMS RIC - Doctoral Training School:Multi-Agent AI Research Assistant"
+format:
+  pdf:
+    toc: true
+    number-sections: true
+    colorlinks: true
+---
+
+
+# AIMS RIC - Doctoral Training School:Multi-Agent AI Research Assistant
 ### Technical Report — April 2026
 
----
 
 ## Abstract
 
@@ -33,14 +42,14 @@ The system is divided into two main services: a Python backend responsible for a
 ```mermaid
 graph TB
     subgraph Frontend["Frontend — Next.js :3000"]
-        UI["Web UI<br/>(React 19 + Tailwind)"]
+        UI["Web UI\n(React 19 + Tailwind)"]
     end
 
     subgraph Backend["Backend — FastAPI :8000"]
-        API["REST API<br/>/api/research"]
+        API["REST API\n/api/research"]
         Pipeline["Multi-Agent Pipeline"]
-        Jobs["Job Manager<br/>(Background Threads)"]
-        DB["SQLite Database<br/>(WAL mode)"]
+        Jobs["Job Manager\n(Background Threads)"]
+        DB["SQLite Database\n(WAL mode)"]
 
         subgraph Agents["Agents"]
             A1["Search Agent"]
@@ -50,8 +59,8 @@ graph TB
         end
 
         subgraph LLMs["LLM Providers"]
-            Groq["Groq<br/>llama-3.3-70b"]
-            HF["HuggingFace<br/>Llama-3.3-70B"]
+            Groq["Groq\nllama-3.3-70b"]
+            HF["HuggingFace\nLlama-3.3-70B"]
         end
     end
 
@@ -108,15 +117,15 @@ sequenceDiagram
     API->>Jobs: create_job(question)
     Jobs->>DB: INSERT job (status=pending)
     Jobs-->>API: job_id
-    API-->>FE: 202 { job_id }
+    API-->>FE: 202 job_id
 
     Jobs->>Pipeline: run_pipeline() [background thread]
 
     loop Poll every 2 seconds
-        FE->>API: GET /api/research/{id}
+        FE->>API: GET /api/research/id
         API->>DB: SELECT job
         DB-->>API: job row
-        API-->>FE: { status, ... }
+        API-->>FE: status, progress
     end
 
     Pipeline->>DB: UPDATE status=searching
@@ -129,8 +138,8 @@ sequenceDiagram
     Note over Pipeline: Evaluator runs
     Pipeline->>DB: UPDATE status=completed, report=...
 
-    FE->>API: GET /api/research/{id}
-    API-->>FE: { status: completed, report, evaluation }
+    FE->>API: GET /api/research/id
+    API-->>FE: status=completed, report, evaluation
     FE-->>User: Display report + scores
 ```
 
@@ -146,12 +155,12 @@ Each agent in the pipeline is a stateless function that reads from and writes to
 classDiagram
     class SharedState {
         +str research_question
-        +list~str~ search_queries
-        +list~Source~ sources
-        +list~Evidence~ evidence
-        +list~Theme~ themes
-        +list~Contradiction~ contradictions
-        +list~str~ report_outline
+        +list search_queries
+        +list sources
+        +list evidence
+        +list themes
+        +list contradictions
+        +list report_outline
         +str final_report
         +EvaluationScores evaluation
         +str started_at
@@ -162,7 +171,7 @@ classDiagram
         +str title
         +str url
         +str snippet
-        +list~str~ images
+        +list images
         +str credibility_notes
         +str accessed_at
     }
@@ -177,13 +186,13 @@ classDiagram
     class Theme {
         +str name
         +str summary
-        +list~int~ evidence_indices
+        +list evidence_indices
         +Confidence confidence
     }
 
     class Contradiction {
         +str description
-        +list~int~ evidence_indices
+        +list evidence_indices
         +str resolution
     }
 
@@ -219,31 +228,31 @@ flowchart TD
     subgraph S1["Search Agent"]
         direction TB
         s1a["LLM: Generate 3 search queries"]
-        s1b["DDG / Tavily search<br/>3–5 results per query"]
-        s1c["httpx: Fetch pages<br/>BeautifulSoup: parse text + images"]
+        s1b["DDG / Tavily search\n3–5 results per query"]
+        s1c["httpx: Fetch pages\nBeautifulSoup: parse text + images"]
         s1d["LLM: Extract claims, quotes, relevance"]
         s1a --> s1b --> s1c --> s1d
     end
 
     subgraph S2["Synthesis Agent"]
         direction TB
-        s2a["LLM: Group evidence into themes<br/>(with confidence levels)"]
-        s2b["LLM: Detect contradictions<br/>between evidence pieces"]
+        s2a["LLM: Group evidence into themes\n(with confidence levels)"]
+        s2b["LLM: Detect contradictions\nbetween evidence pieces"]
         s2a --> s2b
     end
 
     subgraph S3["Report Agent"]
         direction TB
         s3a["LLM: Create section outline"]
-        s3b["LLM: Write full Markdown report<br/>~2000–2500 words"]
-        s3c["Embed citations [1][2]…<br/>and images"]
+        s3b["LLM: Write full Markdown report\n~2000–2500 words"]
+        s3c["Embed citations and images"]
         s3a --> s3b --> s3c
     end
 
     subgraph S4["Evaluator Agent"]
         direction TB
         s4a["LLM: Score report vs evidence"]
-        s4b["Output: coverage, faithfulness,<br/>hallucination_rate, usefulness"]
+        s4b["Output: coverage, faithfulness,\nhallucination_rate, usefulness"]
         s4a --> s4b
     end
 
@@ -255,26 +264,26 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    Q["Research Question"] --> GQ["LLM<br/>Generate queries"]
+    Q["Research Question"] --> GQ["LLM\nGenerate queries"]
 
     GQ --> Q1["query 1"]
     GQ --> Q2["query 2"]
     GQ --> Q3["query 3"]
 
-    Q1 & Q2 & Q3 --> SE{Search<br/>Engine}
+    Q1 & Q2 & Q3 --> SE{Search Engine}
 
-    SE -->|primary| DDG["DuckDuckGo<br/>free, no key"]
-    SE -->|if TAVILY_API_KEY| TAV["Tavily<br/>premium, richer content"]
+    SE -->|primary| DDG["DuckDuckGo\nfree, no key"]
+    SE -->|if TAVILY_API_KEY| TAV["Tavily\npremium, richer content"]
 
-    DDG & TAV --> URLs["Deduplicated URLs<br/>(up to 15)"]
+    DDG & TAV --> URLs["Deduplicated URLs\n(up to 15)"]
 
-    URLs --> FETCH["httpx GET<br/>timeout=10s"]
-    FETCH --> PARSE["BeautifulSoup4<br/>Extract text + images"]
-    PARSE --> TRUNC["Truncate to<br/>MAX_CONTENT_LENGTH chars"]
-    TRUNC --> LLM2["LLM<br/>Extract Evidence"]
+    URLs --> FETCH["httpx GET\ntimeout=10s"]
+    FETCH --> PARSE["BeautifulSoup4\nExtract text + images"]
+    PARSE --> TRUNC["Truncate to\nMAX_CONTENT_LENGTH chars"]
+    TRUNC --> LLM2["LLM\nExtract Evidence"]
 
-    LLM2 --> EV["list[Evidence]<br/>claim, quote, relevance, source_index"]
-    EV --> STATE["SharedState<br/>.sources + .evidence"]
+    LLM2 --> EV["list[Evidence]\nclaim, quote, relevance, source_index"]
+    EV --> STATE["SharedState\n.sources + .evidence"]
 ```
 
 ### 3.4 LLM Provider Strategy
@@ -283,9 +292,9 @@ flowchart LR
 flowchart TD
     CFG["LLM_PROVIDER env var"] --> AUTO{auto?}
 
-    AUTO -->|groq| GC["GroqClient<br/>llama-3.3-70b-versatile"]
-    AUTO -->|huggingface| HFC["HuggingFaceClient<br/>meta-llama/Llama-3.3-70B-Instruct"]
-    AUTO -->|auto| CHECK{GROQ_API_KEY<br/>set?}
+    AUTO -->|groq| GC["GroqClient\nllama-3.3-70b-versatile"]
+    AUTO -->|huggingface| HFC["HuggingFaceClient\nmeta-llama/Llama-3.3-70B-Instruct"]
+    AUTO -->|auto| CHECK{GROQ_API_KEY set?}
 
     CHECK -->|yes| GC
     CHECK -->|no| HFC
@@ -295,28 +304,27 @@ flowchart TD
 
     CALL --> ERR{Error?}
     ERR -->|success| OUT["Response text"]
-    ERR -->|429 / 5xx<br/>attempt < 3| WAIT["Wait 1s / 3s<br/>Retry"]
+    ERR -->|429/5xx, attempt lt 3| WAIT["Wait 1s / 3s\nRetry"]
     WAIT --> CALL
-    ERR -->|primary key<br/>rate-limited| KEY2{GROQ_API_KEY_2<br/>available?}
-    KEY2 -->|yes| GC2["Retry with<br/>secondary Groq key"]
-    KEY2 -->|no| FB{LLM_PROVIDER<br/>== auto?}
-    FB -->|yes| FBP["Fallback to<br/>alternate provider"]
+    ERR -->|primary key rate-limited| KEY2{GROQ_API_KEY_2 available?}
+    KEY2 -->|yes| GC2["Retry with\nsecondary Groq key"]
+    KEY2 -->|no| FB{LLM_PROVIDER == auto?}
+    FB -->|yes| FBP["Fallback to\nalternate provider"]
     FBP --> CALL
     FB -->|no| RAISE["Raise exception"]
 
     GC2 --> CALL
-    OUT --> JSON["chat_json()<br/>JSON extraction +<br/>parsing"]
+    OUT --> JSON["chat_json()\nJSON extraction +\nparsing"]
 ```
 
 ### 3.5 Evaluation Scores
 
-```mermaid
-xychart-beta
-    title "Evaluation Score Dimensions (example output)"
-    x-axis ["Coverage", "Faithfulness", "Usefulness", "Hallucination Rate"]
-    y-axis "Score (0.0 → 1.0)" 0 --> 1
-    bar [0.87, 0.92, 0.85, 0.08]
-```
+| Dimension | Score |
+|-----------|-------|
+| Coverage | 0.87 |
+| Faithfulness | 0.92 |
+| Usefulness | 0.85 |
+| Hallucination Rate | 0.08 |
 
 ---
 
@@ -386,17 +394,17 @@ sequenceDiagram
     participant API as FastAPI (SSE)
     participant EV as Events Table
 
-    FE->>API: GET /api/research/{id}/events
+    FE->>API: GET /api/research/id/events
     Note over API,EV: Streams events as they are appended
 
-    API-->>FE: data: {"type":"stage_change","data":{"stage":"searching"}}
-    API-->>FE: data: {"type":"queries_ready","data":{"queries":[...]}}
-    API-->>FE: data: {"type":"sources_ready","data":{"count":12}}
-    API-->>FE: data: {"type":"stage_change","data":{"stage":"synthesising"}}
-    API-->>FE: data: {"type":"themes_ready","data":{"count":5}}
-    API-->>FE: data: {"type":"stage_change","data":{"stage":"reporting"}}
-    API-->>FE: data: {"type":"stage_change","data":{"stage":"evaluating"}}
-    API-->>FE: data: {"type":"job_completed","data":{"job_id":"..."}}
+    API-->>FE: event: stage_change — searching
+    API-->>FE: event: queries_ready — queries list
+    API-->>FE: event: sources_ready — count 12
+    API-->>FE: event: stage_change — synthesising
+    API-->>FE: event: themes_ready — count 5
+    API-->>FE: event: stage_change — reporting
+    API-->>FE: event: stage_change — evaluating
+    API-->>FE: event: job_completed — job_id
     Note over FE: Stream closes on terminal event
 ```
 
@@ -429,9 +437,9 @@ The Next.js 16 frontend (React 19, Tailwind CSS 4, TypeScript) provides three pa
 ```mermaid
 graph TD
     subgraph Pages
-        HOME["/<br/>Home Page"]
-        HIST["/history<br/>Job History"]
-        JOB["/job/[id]<br/>Job Detail"]
+        HOME["/\nHome Page"]
+        HIST["/history\nJob History"]
+        JOB["/job/[id]\nJob Detail"]
     end
 
     subgraph HomeComponents["Home Page Components"]
@@ -441,20 +449,20 @@ graph TD
         SC["ScoreCard"]
         RV["ReportView"]
         RP["ReasoningPanel"]
-        PL["useJobPoller hook<br/>(polls every 2s)"]
+        PL["useJobPoller hook\n(polls every 2s)"]
     end
 
     subgraph HistComponents["History Page Components"]
-        JT["Job Table<br/>(all jobs)"]
+        JT["Job Table\n(all jobs)"]
         SB["StatusBadge"]
         DEL["Delete buttons"]
     end
 
     subgraph JobComponents["Job Detail Components"]
-        JH["Job Header<br/>(id, question, status)"]
+        JH["Job Header\n(id, question, status)"]
         SS2["StatusStepper"]
         SC2["ScoreCard"]
-        AB["Action Bar<br/>(download MD / PDF)"]
+        AB["Action Bar\n(download MD / PDF)"]
         RP2["ReasoningPanel"]
         RV2["ReportView"]
     end
@@ -483,7 +491,7 @@ graph TD
 
 ```mermaid
 flowchart LR
-    ENV["NEXT_PUBLIC_API_URL<br/>NEXT_PUBLIC_API_KEY"] --> LIB["lib/api.ts<br/>Typed fetch wrappers"]
+    ENV["NEXT_PUBLIC_API_URL\nNEXT_PUBLIC_API_KEY"] --> LIB["lib/api.ts\nTyped fetch wrappers"]
 
     LIB --> submitResearch
     LIB --> getJob
@@ -491,13 +499,13 @@ flowchart LR
     LIB --> deleteJob
     LIB --> downloadPdf
 
-    submitResearch --> POLL["useJobPoller(id)<br/>setInterval 2000ms"]
-    POLL -->|terminal state| STOP["Stop polling<br/>(completed / failed)"]
+    submitResearch --> POLL["useJobPoller(id)\nsetInterval 2000ms"]
+    POLL -->|terminal state| STOP["Stop polling\n(completed / failed)"]
 
-    getJob --> JobResult["JobResult<br/>{ status, report,<br/>evaluation, counts }"]
-    JobResult --> RV["ReportView<br/>Markdown renderer<br/>+ Mermaid diagrams"]
-    JobResult --> SC["ScoreCard<br/>4 score bars"]
-    JobResult --> SS["StatusStepper<br/>6-stage progress"]
+    getJob --> JobResult["JobResult\nstatus, report,\nevaluation, counts"]
+    JobResult --> RV["ReportView\nMarkdown renderer\n+ mermaid diagrams"]
+    JobResult --> SC["ScoreCard\n4 score bars"]
+    JobResult --> SS["StatusStepper\n6-stage progress"]
 ```
 
 ---
@@ -556,22 +564,22 @@ Key environment variables (set in `api/.env`):
 graph TB
     subgraph Current["Current — Single Instance"]
         direction LR
-        FE1["Vercel<br/>(Frontend)"] -->|HTTPS| API1["FastAPI<br/>(single process)"]
-        API1 --> TH["threading.Thread<br/>(per job)"]
-        TH --> SQ["SQLite<br/>(WAL mode)"]
+        FE1["Vercel\n(Frontend)"] -->|HTTPS| API1["FastAPI\n(single process)"]
+        API1 --> TH["threading.Thread\n(per job)"]
+        TH --> SQ["SQLite\n(WAL mode)"]
         API1 --> SQ
     end
 
     subgraph Scaled["Production Scale — Horizontal"]
         direction LR
-        FE2["Vercel<br/>(Frontend)"] -->|HTTPS| LB["Load Balancer"]
-        LB --> W1["FastAPI<br/>worker 1"]
-        LB --> W2["FastAPI<br/>worker 2"]
-        LB --> W3["FastAPI<br/>worker N"]
-        W1 & W2 & W3 --> RQ["Redis<br/>(job queue)"]
+        FE2["Vercel\n(Frontend)"] -->|HTTPS| LB["Load Balancer"]
+        LB --> W1["FastAPI\nworker 1"]
+        LB --> W2["FastAPI\nworker 2"]
+        LB --> W3["FastAPI\nworker N"]
+        W1 & W2 & W3 --> RQ["Redis\n(job queue)"]
         RQ --> CW1["Celery worker"]
         RQ --> CW2["Celery worker"]
-        W1 & W2 & W3 --> PG["PostgreSQL<br/>(shared DB)"]
+        W1 & W2 & W3 --> PG["PostgreSQL\n(shared DB)"]
         CW1 & CW2 --> PG
     end
 ```
@@ -580,12 +588,12 @@ graph TB
 
 ```mermaid
 flowchart TD
-    START([Deploy ML-ESS]) --> ENV["Set env vars<br/>GROQ_API_KEY, API_KEY,<br/>CORS_ORIGINS"]
-    ENV --> DB["Initialize SQLite<br/>(auto on first run)"]
-    DB --> SRV["Start Uvicorn<br/>python main.py serve"]
-    SRV --> FE["Configure Frontend<br/>NEXT_PUBLIC_API_URL<br/>NEXT_PUBLIC_API_KEY"]
-    FE --> BUILD["npm run build<br/>npm run start"]
-    BUILD --> TEST["GET /api/health<br/>→ {status: ok}"]
+    START([Deploy ML-ESS]) --> ENV["Set env vars\nGROQ_API_KEY, API_KEY,\nCORS_ORIGINS"]
+    ENV --> DB["Initialize SQLite\n(auto on first run)"]
+    DB --> SRV["Start Uvicorn\npython main.py serve"]
+    SRV --> FE["Configure Frontend\nNEXT_PUBLIC_API_URL\nNEXT_PUBLIC_API_KEY"]
+    FE --> BUILD["npm run build\nnpm run start"]
+    BUILD --> TEST["GET /api/health\n→ status: ok"]
     TEST --> DONE([System Ready])
 ```
 
@@ -597,6 +605,4 @@ ML-ESS demonstrates how a small, well-structured multi-agent system can automate
 
 The modular agent design makes the system straightforward to extend: adding a new research phase (e.g., a fact-checking agent or a translation layer) requires only inserting a new agent function into the pipeline and extending `SharedState` with the new fields.
 
----
 
-*Report generated: April 2026 — ML-ESS v1.0*
