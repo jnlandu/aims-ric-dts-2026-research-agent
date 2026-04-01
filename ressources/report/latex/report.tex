@@ -1,0 +1,545 @@
+\documentclass[10pt, twocolumn]{article}
+
+% ── Packages ────────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper, top=2.2cm, bottom=2.2cm, left=1.6cm, right=1.6cm,
+            columnsep=0.6cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{authblk}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{abstract}
+\usepackage{parskip}
+\usepackage{listings}
+\usepackage{cite}
+
+% ── Colours ──────────────────────────────────────────────────────────────────
+\definecolor{aims-blue}{RGB}{0, 70, 127}
+\definecolor{code-bg}{RGB}{245, 245, 245}
+
+% ── Hyperref ─────────────────────────────────────────────────────────────────
+\hypersetup{
+  colorlinks = true,
+  linkcolor  = aims-blue,
+  urlcolor   = aims-blue,
+  citecolor  = aims-blue,
+}
+
+% ── Section title formatting ─────────────────────────────────────────────────
+\titleformat{\section}{\normalfont\large\bfseries\color{aims-blue}}
+  {\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}
+  {\thesubsection}{0.5em}{}
+\titleformat{\subsubsection}{\normalfont\small\bfseries\itshape}
+  {\thesubsubsection}{0.5em}{}
+
+% ── Header / footer ──────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\lhead{\small\color{gray} AIMS RIC — Doctoral Training School 2026}
+\rhead{\small\color{gray} ML-ESS Technical Report}
+\cfoot{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% ── Abstract formatting ──────────────────────────────────────────────────────
+\renewcommand{\abstractnamefont}{\normalfont\bfseries}
+\renewcommand{\abstracttextfont}{\normalfont\small}
+\setlength{\absleftindent}{0pt}
+\setlength{\absrightindent}{0pt}
+
+% ── Caption formatting ───────────────────────────────────────────────────────
+\captionsetup{font=small, labelfont=bf, skip=4pt}
+
+% ── Listings ─────────────────────────────────────────────────────────────────
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{code-bg},
+  frame=single, framerule=0.4pt,
+  breaklines=true, breakatwhitespace=true,
+  captionpos=b, xleftmargin=4pt, xrightmargin=4pt,
+}
+
+% ── List spacing ─────────────────────────────────────────────────────────────
+\setlist[itemize]{noitemsep, topsep=2pt, leftmargin=*}
+\setlist[enumerate]{noitemsep, topsep=2pt, leftmargin=*}
+
+% ─────────────────────────────────────────────────────────────────────────────
+%  TITLE BLOCK
+% ─────────────────────────────────────────────────────────────────────────────
+
+\title{%
+  \vspace{-1em}%
+  {\large\textbf{AIMS RIC — Doctoral Training School 2026}}\\[4pt]
+  {\Large\bfseries\color{aims-blue}
+    ML-ESS: A Multi-Agent AI Research Assistant}\\[4pt]
+  {\normalsize Technical Report — April 2026}%
+}
+
+\author[1]{\textbf{Jérémie N. Landu}}
+\affil[1]{%
+  African Institute for Mathematical Sciences\\
+  Research Innovation Centre (AIMS-RIC)\\
+  \texttt{jeremy@aimsammi.org}
+}
+
+\date{}
+
+% =============================================================================
+\begin{document}
+% =============================================================================
+
+\maketitle
+\thispagestyle{fancy}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{abstract}
+ML-ESS is a full-stack AI system that automates end-to-end research: given a
+natural language question, it orchestrates four specialised AI agents to search
+the web, synthesise evidence, draft a structured report, and evaluate the
+report's quality. The system exposes a REST API (FastAPI) and a modern web
+interface (Next.js), supporting real-time progress tracking, PDF export, and
+multi-provider LLM fallback. This report describes the system architecture,
+agent pipeline, data model, REST API, frontend application, deployment
+strategy, and design trade-offs.
+\end{abstract}
+
+\vspace{0.5em}
+\noindent\textbf{Keywords:} multi-agent systems, large language models,
+automated research, FastAPI, Next.js, retrieval-augmented generation.
+
+\vspace{0.5em}
+\hrule
+\vspace{0.5em}
+
+% =============================================================================
+\section{Introduction \& Motivation}
+% =============================================================================
+
+Conducting thorough research manually is time-consuming: it involves querying
+multiple sources, extracting relevant claims, resolving contradictions, and
+composing a coherent, well-cited document. ML-ESS automates this entire
+workflow through a multi-agent pipeline, replacing hours of manual work with a
+structured, reproducible process.
+
+\medskip
+\noindent\textbf{Core objectives:}
+\begin{itemize}
+  \item Accept any research question in natural language.
+  \item Autonomously gather evidence from the open web.
+  \item Synthesise findings into themes, resolving contradictions.
+  \item Generate a structured Markdown report with citations.
+  \item Score the report quality along four dimensions.
+  \item Deliver everything through a clean web UI with real-time feedback.
+\end{itemize}
+
+% =============================================================================
+\section{System Architecture}
+% =============================================================================
+
+\subsection{High-Level Overview}
+
+The system is divided into two main services: a Python backend responsible for
+all AI reasoning and data persistence, and a Next.js frontend that provides the
+user interface. Figure~\ref{fig:arch} illustrates the high-level architecture.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-1.png}
+  \caption{High-level system architecture.}
+  \label{fig:arch}
+\end{figure}
+
+\subsection{Backend Directory Structure}
+
+\begin{lstlisting}
+api/
+|-- main.py                 # CLI & server entry point
+|-- app/
+    |-- agents/
+    |   |-- search.py       # Web search & evidence extraction
+    |   |-- synthesis.py    # Theme identification
+    |   |-- report.py       # Markdown generation
+    |   |-- evaluator.py    # Quality scoring
+    |-- api/
+    |   |-- app.py          # FastAPI factory, CORS
+    |   |-- routes.py       # REST endpoints & SSE
+    |   |-- auth.py         # API key authentication
+    |-- core/
+    |   |-- pipeline.py     # Sequential orchestration
+    |   |-- jobs.py         # Background thread management
+    |   |-- store.py        # SQLite (WAL mode)
+    |   |-- llm.py          # LLM client w/ retries
+    |-- models/
+        |-- api.py          # Pydantic schemas
+        |-- state.py        # Pipeline shared state
+\end{lstlisting}
+
+\subsection{Request Lifecycle \& Data Flow}
+
+Figure~\ref{fig:lifecycle} shows the full request lifecycle from the moment a
+user submits a question to the delivery of the final report.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-2.png}
+  \caption{Request lifecycle and data flow (sequence diagram).}
+  \label{fig:lifecycle}
+\end{figure}
+
+% =============================================================================
+\section{The Multi-Agent Pipeline}
+% =============================================================================
+
+Each agent in the pipeline is a stateless function that reads from and writes
+to a shared \texttt{SharedState} object. Agents are called sequentially — each
+one enriches the state for the next.
+
+\subsection{SharedState Schema}
+
+Figure~\ref{fig:state} shows the class diagram of the shared pipeline state,
+including the \texttt{Source}, \texttt{Evidence}, \texttt{Theme},
+\texttt{Contradiction}, and \texttt{EvaluationScores} entities.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-3.png}
+  \caption{SharedState class diagram.}
+  \label{fig:state}
+\end{figure}
+
+\subsection{Agent Pipeline Flow}
+
+The pipeline executes four agents sequentially
+(Figure~\ref{fig:pipeline}):
+
+\begin{enumerate}
+  \item \textbf{Search Agent} — generates queries, fetches pages, and extracts
+    structured evidence.
+  \item \textbf{Synthesis Agent} — groups evidence into themes and detects
+    contradictions.
+  \item \textbf{Report Agent} — produces a structured Markdown report
+    (\textasciitilde{}2\,000–2\,500 words) with citations.
+  \item \textbf{Evaluator} — scores the report on four quality dimensions.
+\end{enumerate}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-4.png}
+  \caption{Agent pipeline flow.}
+  \label{fig:pipeline}
+\end{figure}
+
+\subsection{Search Agent Detail}
+
+The Search Agent (Figure~\ref{fig:search}) generates up to three search
+queries via an LLM call, fans out to DuckDuckGo (or Tavily when an API key is
+provided), de-duplicates the result URLs, fetches page content with
+\texttt{httpx}, parses it with BeautifulSoup4, and finally calls the LLM again
+to extract structured evidence records.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-5.png}
+  \caption{Search Agent internal data flow.}
+  \label{fig:search}
+\end{figure}
+
+\subsection{LLM Provider Strategy}
+
+Figure~\ref{fig:llm} shows the retry and fallback strategy implemented in the
+LLM client. The primary provider is Groq (\texttt{llama-3.3-70b-versatile});
+HuggingFace Inference (\texttt{Llama-3.3-70B-Instruct}) serves as a fallback
+when Groq rate-limits are exhausted.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-6.png}
+  \caption{LLM provider retry and fallback strategy.}
+  \label{fig:llm}
+\end{figure}
+
+\subsection{Evaluation Scores}
+
+The Evaluator Agent scores the generated report along four dimensions
+(Table~\ref{tab:scores}). Scores for coverage, faithfulness, and usefulness
+are in $[0,1]$; the hallucination rate is also in $[0,1]$ but lower is better.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Example evaluation scores.}
+  \label{tab:scores}
+  \begin{tabular}{lc}
+    \toprule
+    \textbf{Dimension} & \textbf{Score} \\
+    \midrule
+    Coverage          & 0.87 \\
+    Faithfulness      & 0.92 \\
+    Usefulness        & 0.85 \\
+    Hallucination rate & 0.08 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Data Persistence}
+% =============================================================================
+
+\subsection{SQLite Schema}
+
+The backend persists all job data in a single SQLite database opened in WAL
+mode (Figure~\ref{fig:er}). Three tables are used: \texttt{JOBS} (primary
+record), \texttt{STATES} (full serialised pipeline state), and \texttt{EVENTS}
+(append-only SSE event log).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-7.png}
+  \caption{Entity-relationship diagram.}
+  \label{fig:er}
+\end{figure}
+
+\subsection{Job Status Lifecycle}
+
+Figure~\ref{fig:states} shows the finite-state machine for a research job. A
+job progresses through \textit{pending} $\to$ \textit{searching} $\to$
+\textit{synthesising} $\to$ \textit{reporting} $\to$ \textit{evaluating} $\to$
+\textit{completed}, or transitions to \textit{failed} on any unhandled
+exception.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-8.png}
+  \caption{Job status state machine.}
+  \label{fig:states}
+\end{figure}
+
+\subsection{SSE Event Stream}
+
+Figure~\ref{fig:sse} shows the Server-Sent Events (SSE) protocol between the
+frontend and the \texttt{/api/research/\{id\}/events} endpoint.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-9.png}
+  \caption{SSE event stream sequence.}
+  \label{fig:sse}
+\end{figure}
+
+% =============================================================================
+\section{REST API Reference}
+% =============================================================================
+
+All endpoints except \texttt{/api/health} require the header
+\texttt{X-API-Key: <key>} when \texttt{API\_KEY} is configured.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{REST API endpoints.}
+  \label{tab:api}
+  \begin{tabular}{p{1.0cm} p{3.6cm} c}
+    \toprule
+    \textbf{Method} & \textbf{Endpoint} & \textbf{Status} \\
+    \midrule
+    \texttt{POST}   & \texttt{/api/research}            & 202 \\
+    \texttt{GET}    & \texttt{/api/research}             & 200 \\
+    \texttt{GET}    & \texttt{/api/research/\{id\}}      & 200 \\
+    \texttt{GET}    & \texttt{.../\{id\}/reasoning}      & 200 \\
+    \texttt{GET}    & \texttt{.../\{id\}/events}         & 200 \\
+    \texttt{GET}    & \texttt{.../\{id\}/pdf}            & 200 \\
+    \texttt{DELETE} & \texttt{/api/research/\{id\}}      & 200 \\
+    \texttt{DELETE} & \texttt{/api/research}             & 200 \\
+    \texttt{GET}    & \texttt{/api/health}               & 200 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Frontend Application}
+% =============================================================================
+
+The Next.js~16 frontend (React~19, Tailwind CSS~v4, TypeScript) provides three
+pages: Home (\texttt{/}), Job History (\texttt{/history}), and Job Detail
+(\texttt{/job/[id]}). Figure~\ref{fig:fe-tree} shows the page and component
+tree; Figure~\ref{fig:fe-flow} shows the frontend data flow.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-10.png}
+  \caption{Frontend page and component tree.}
+  \label{fig:fe-tree}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-11.png}
+  \caption{Frontend data flow.}
+  \label{fig:fe-flow}
+\end{figure}
+
+% =============================================================================
+\section{Technology Stack}
+% =============================================================================
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Technology stack summary.}
+  \label{tab:stack}
+  \begin{tabular}{p{1.8cm} p{2.0cm} p{2.2cm}}
+    \toprule
+    \textbf{Layer} & \textbf{Technology} & \textbf{Role} \\
+    \midrule
+    Backend lang.    & Python 3.11+      & Agent \& API logic \\
+    API framework    & FastAPI $\geq$0.115 & HTTP, routing \\
+    ASGI server      & Uvicorn $\geq$0.30 & Production server \\
+    LLM (primary)    & Groq SDK          & llama-3.3-70b \\
+    LLM (fallback)   & HuggingFace Hub   & Llama-3.3-70B \\
+    Web search       & ddgs $\geq$9.0    & DuckDuckGo \\
+    Web search (opt) & tavily-python     & Premium search \\
+    Scraping         & httpx + bs4       & Fetch \& parse \\
+    Validation       & Pydantic $\geq$2  & Schemas \\
+    Database         & SQLite (WAL)      & Persistence \\
+    PDF export       & WeasyPrint $\geq$62 & MD $\to$ PDF \\
+    Frontend         & Next.js 16.2.1    & React 19 App Router \\
+    Styling          & Tailwind CSS v4   & Utility-first CSS \\
+    Language (FE)    & TypeScript        & Type safety \\
+    Deployment (FE)  & Vercel            & Hosted frontend \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Configuration}
+% =============================================================================
+
+Key environment variables (set in \texttt{api/.env}) are listed in
+Table~\ref{tab:config}.
+
+\begin{table}[H]
+  \centering
+  \small
+  \caption{Key environment variables.}
+  \label{tab:config}
+  \begin{tabular}{p{2.6cm} p{1.1cm} p{2.5cm}}
+    \toprule
+    \textbf{Variable} & \textbf{Default} & \textbf{Purpose} \\
+    \midrule
+    \texttt{LLM\_PROVIDER}         & auto      & groq / huggingface / auto \\
+    \texttt{GROQ\_API\_KEY}        & —         & Primary Groq key \\
+    \texttt{GROQ\_API\_KEY\_2}     & —         & Fallback Groq key \\
+    \texttt{GROQ\_MODEL}           & llama-3.3-70b & Groq model \\
+    \texttt{HF\_TOKEN}             & —         & HuggingFace token \\
+    \texttt{TEMPERATURE}           & 0.3       & LLM temperature \\
+    \texttt{TAVILY\_API\_KEY}      & —         & Premium search \\
+    \texttt{MAX\_SEARCH\_QUERIES}  & 3         & Queries per question \\
+    \texttt{MAX\_RESULTS\_PER\_QUERY} & 5      & Results per query \\
+    \texttt{MAX\_CONTENT\_LENGTH}  & 3000      & Chars per page \\
+    \texttt{API\_KEY}              & —         & Auth key \\
+    \texttt{DB\_PATH}              & data/jobs.db & SQLite location \\
+    \texttt{CORS\_ORIGINS}         & Vercel URL & Allowed origins \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Deployment Architecture}
+% =============================================================================
+
+\subsection{Current vs.\ Scalable Architecture}
+
+Figure~\ref{fig:deploy} contrasts the current single-instance deployment
+(FastAPI + SQLite + background threads on a single process) with a
+production-scale horizontal architecture (load balancer, multiple FastAPI
+workers, Redis job queue, Celery workers, and PostgreSQL).
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-12.png}
+  \caption{Current vs.\ scalable deployment architecture.}
+  \label{fig:deploy}
+\end{figure}
+
+\subsection{Deployment Checklist}
+
+Figure~\ref{fig:checklist} summarises the five-step deployment procedure:
+set environment variables, initialise SQLite, start Uvicorn, configure the
+frontend, and verify the health endpoint.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{../report-rendered-13.png}
+  \caption{Deployment checklist flowchart.}
+  \label{fig:checklist}
+\end{figure}
+
+% =============================================================================
+\section{Conclusion}
+% =============================================================================
+
+ML-ESS demonstrates how a small, well-structured multi-agent system can
+automate a complex, knowledge-intensive task end-to-end. By composing four
+focused agents — each with a clear role — the pipeline transforms a single
+natural language question into a cited, evaluated research report in minutes.
+
+The system is designed for clarity and correctness: low LLM temperature for
+deterministic outputs, retry/fallback logic for resilience, persistent job
+state for observability, and a clean typed API for frontend integration. The
+modular agent design makes the system straightforward to extend: adding a new
+research phase (e.g., a fact-checking agent or a translation layer) requires
+only inserting a new agent function into the pipeline and extending
+\texttt{SharedState} with the new fields.
+
+% =============================================================================
+%  ACKNOWLEDGEMENTS
+% =============================================================================
+
+\section*{Acknowledgements}
+
+The author thanks the AIMS Research Innovation Centre and the organisers of the
+2026 Doctoral Training School for providing the research environment and
+computational resources that made this work possible.
+
+% =============================================================================
+%  REFERENCES  (add a .bib file or use manual \bibitem entries)
+% =============================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{fastapi}
+S. Ramirez, \textit{FastAPI}, 2019. \url{https://fastapi.tiangolo.com}
+
+\bibitem{nextjs}
+Vercel, \textit{Next.js Documentation}, 2024. \url{https://nextjs.org/docs}
+
+\bibitem{groq}
+Groq Inc., \textit{Groq API — llama-3.3-70b-versatile}, 2024.
+\url{https://console.groq.com}
+
+\bibitem{llama3}
+AI Meta, ``The Llama 3 Herd of Models,'' \textit{arXiv preprint
+arXiv:2407.21783}, 2024.
+
+\bibitem{rag}
+P. Lewis \textit{et al.}, ``Retrieval-Augmented Generation for
+Knowledge-Intensive NLP Tasks,'' in \textit{Advances in Neural Information
+Processing Systems}, vol. 33, 2020, pp. 9459--9474.
+
+\bibitem{weasyprint}
+CourtBouillon, \textit{WeasyPrint}, 2024. \url{https://weasyprint.org}
+
+\end{thebibliography}
+
+\end{document}

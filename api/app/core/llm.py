@@ -18,8 +18,8 @@ from app.core import config
 
 logger = logging.getLogger(__name__)
 
-_MAX_RETRIES = 3
-_RETRY_BACKOFF = (1, 3)
+_MAX_RETRIES = 2
+_RETRY_BACKOFF = (1, 2)  # seconds to wait before retrying on rate-limit / transient error
 
 
 # ── Provider abstraction ────────────────────────────────────────────────────
