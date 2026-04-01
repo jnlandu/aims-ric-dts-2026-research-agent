@@ -51,4 +51,4 @@ WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
 DB_PATH: str = os.getenv("DB_PATH", "data/jobs.db")
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
-CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "http://localhost:3000")
+CORS_ORIGINS: str = os.getenv("CORS_ORIGINS", "https://research-agent-phi-six.vercel.app")
