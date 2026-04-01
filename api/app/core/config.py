@@ -18,6 +18,7 @@ LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "auto")
 # ── Groq ─────────────────────────────────────────────────────────────────────
 
 GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY_2: str = os.getenv("GROQ_API_KEY_2", "")
 
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
@@ -29,6 +30,7 @@ HF_MODEL: str = os.getenv("HF_MODEL", "meta-llama/Llama-3.3-70B-Instruct")
 TEMPERATURE: float = float(os.getenv("TEMPERATURE", "0.3"))
 
 # ── Search ───────────────────────────────────────────────────────────────────
+TAVILY_API_KEY: str = os.getenv("TAVILY_API_KEY", "")
 MAX_SEARCH_QUERIES: int = int(os.getenv("MAX_SEARCH_QUERIES", "3"))
 MAX_RESULTS_PER_QUERY: int = int(os.getenv("MAX_RESULTS_PER_QUERY", "5"))
 MAX_CONTENT_LENGTH: int = int(os.getenv("MAX_CONTENT_LENGTH", "3000"))

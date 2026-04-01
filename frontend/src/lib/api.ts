@@ -127,6 +127,28 @@ export async function clearAllJobs(): Promise<void> {
   }
 }
 
+export async function downloadPdf(jobId: string, question: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/research/${jobId}/pdf`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `Request failed (${res.status})`);
+  }
+  const blob = await res.blob();
+  const slug = question
+    .slice(0, 50)
+    .replace(/[^a-zA-Z0-9 _-]/g, "")
+    .trim()
+    .replace(/\s+/g, "_");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${slug}_report.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function checkHealth(): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/api/health`);
   return res.json();

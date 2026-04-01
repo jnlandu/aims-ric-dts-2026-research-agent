@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import io
 import json
+import re
 
+import markdown
+import weasyprint
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.api.auth import require_api_key
 from app.core.jobs import clear_all_jobs, create_job, delete_job, get_job, get_job_events, get_job_state, list_jobs
@@ -16,6 +21,28 @@ router = APIRouter(tags=["research"])
 
 # Dependency shorthand applied to protected routes
 _auth = Depends(require_api_key)
+
+# Regex matching ```mermaid ... ``` fenced blocks
+_MERMAID_BLOCK_RE = re.compile(r"```mermaid\s*\n(.*?)```", re.DOTALL)
+
+
+def _mermaid_to_img_tags(md_text: str) -> str:
+    """Replace Mermaid fenced code blocks with <img> tags for PDF rendering.
+
+    Uses the mermaid.ink service to convert diagram code to images.
+    """
+
+    def _replace(match: re.Match) -> str:
+        code = match.group(1).strip()
+        encoded = base64.urlsafe_b64encode(code.encode()).decode()
+        url = f"https://mermaid.ink/img/base64:{encoded}"
+        return (
+            f'<div style="text-align:center;margin:16px 0">'
+            f'<img src="{url}" alt="diagram" style="max-width:100%">'
+            f"</div>"
+        )
+
+    return _MERMAID_BLOCK_RE.sub(_replace, md_text)
 
 
 @router.post("/research", response_model=JobResponse, status_code=202, dependencies=[_auth])
@@ -127,6 +154,60 @@ def get_reasoning(job_id: str):
         "available": True,
         "steps": steps,
     }
+
+
+@router.get("/research/{job_id}/pdf", dependencies=[_auth])
+def download_pdf(job_id: str):
+    """Download the research report as a PDF."""
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    if not job.report:
+        raise HTTPException(status_code=409, detail="Report not ready yet.")
+
+    # Convert Mermaid blocks to <img> tags before Markdown rendering
+    report_md = _mermaid_to_img_tags(job.report)
+
+    html_body = markdown.markdown(
+        report_md,
+        extensions=["extra", "codehilite", "toc"],
+    )
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<style>
+  @page {{ size: A4; margin: 2cm; }}
+  body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+         font-size: 11pt; line-height: 1.6; color: #1a1a1a; }}
+  h1 {{ font-size: 20pt; margin-top: 0; color: #111; }}
+  h2 {{ font-size: 15pt; border-bottom: 1px solid #ddd; padding-bottom: 4px; }}
+  h3 {{ font-size: 12pt; }}
+  code {{ background: #f5f5f5; padding: 1px 4px; border-radius: 3px; font-size: 10pt; }}
+  pre {{ background: #f5f5f5; padding: 12px; border-radius: 4px;
+         overflow-x: auto; font-size: 9pt; }}
+  blockquote {{ border-left: 3px solid #ccc; margin-left: 0; padding-left: 12px;
+               color: #555; }}
+  table {{ border-collapse: collapse; width: 100%; }}
+  th, td {{ border: 1px solid #ccc; padding: 6px 10px; text-align: left; }}
+  th {{ background: #f0f0f0; }}
+  img {{ max-width: 100%; height: auto; }}
+</style>
+</head><body>
+<h1>{job.question}</h1>
+<hr>
+{html_body}
+</body></html>"""
+
+    pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+
+    slug = re.sub(r"[^a-zA-Z0-9 _-]", "", job.question[:50]).strip().replace(" ", "_")
+    filename = f"{slug}_report.pdf"
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/research", response_model=list[JobResult], dependencies=[_auth])

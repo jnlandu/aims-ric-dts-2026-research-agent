@@ -30,16 +30,23 @@ class LLMClient(Protocol):
     def completions(self, system: str, user: str) -> str: ...
 
 
+def _is_rate_limit(exc: Exception) -> bool:
+    """Check if an exception is a rate-limit / transient error."""
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", 0)
+    return status in (429, 500, 502, 503, 504)
+
+
 class GroqClient:
-    """Wrapper around the Groq SDK."""
+    """Wrapper around the Groq SDK with automatic fallback to a second API key."""
     provider = "groq"
 
     def __init__(self) -> None:
         from groq import Groq
         self._client = Groq(api_key=config.GROQ_API_KEY)
+        self._client2 = Groq(api_key=config.GROQ_API_KEY_2) if config.GROQ_API_KEY_2 else None
 
-    def completions(self, system: str, user: str) -> str:
-        resp = self._client.chat.completions.create(
+    def _call(self, client, system: str, user: str) -> str:
+        resp = client.chat.completions.create(
             model=config.GROQ_MODEL,
             temperature=config.TEMPERATURE,
             messages=[
@@ -48,6 +55,15 @@ class GroqClient:
             ],
         )
         return resp.choices[0].message.content or ""
+
+    def completions(self, system: str, user: str) -> str:
+        try:
+            return self._call(self._client, system, user)
+        except Exception as exc:
+            if self._client2 is not None and _is_rate_limit(exc):
+                logger.warning("Groq primary key failed (%s), trying fallback key…", exc)
+                return self._call(self._client2, system, user)
+            raise
 
 
 class HuggingFaceClient:
@@ -96,12 +112,6 @@ def get_client() -> LLMClient:
             return HuggingFaceClient()
         raise RuntimeError("No LLM API key configured. Set GROQ_API_KEY or HF_TOKEN.")
     return _make_client(provider)
-
-
-def _is_rate_limit(exc: Exception) -> bool:
-    """Check if an exception is a rate-limit / transient error."""
-    status = getattr(exc, "status_code", None) or getattr(exc, "status", 0)
-    return status in (429, 500, 502, 503, 504)
 
 
 # ── Chat helpers (used by all agents) ───────────────────────────────────────

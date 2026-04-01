@@ -25,6 +25,7 @@ class Source(BaseModel):
     accessed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     credibility_notes: str = ""
     snippet: str = ""
+    images: list[str] = Field(default_factory=list)
 
 
 class Evidence(BaseModel):

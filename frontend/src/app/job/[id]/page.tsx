@@ -8,6 +8,7 @@ import ScoreCard from "@/components/ScoreCard";
 import ReportView from "@/components/ReportView";
 import ReasoningPanel from "@/components/ReasoningPanel";
 import type { JobResult } from "@/lib/api";
+import { downloadPdf } from "@/lib/api";
 
 function downloadReport(job: JobResult) {
   const slug = job.question
@@ -103,6 +104,12 @@ export default function JobPage({
             className="inline-flex items-center gap-1.5 rounded-full border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
           >
             ⬇ Download report
+          </button>
+          <button
+            onClick={() => downloadPdf(job.job_id, job.question)}
+            className="inline-flex items-center gap-1.5 rounded-full border border-gray-600 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-800 transition-colors"
+          >
+            📄 Download PDF
           </button>
           <button
             onClick={() => setShowReasoning(!showReasoning)}
