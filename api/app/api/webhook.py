@@ -502,7 +502,7 @@ async def telegram_inbound(request: Request):
     if text.startswith("/help"):
         _send_telegram_message(
             chat_id,
-            "🤖 *ML-ESS Research Assistant*\n\n"
+            "*ML-ESS Research Assistant*\n\n"
             "Send any research question as plain text.\n\n"
             "The pipeline will:\n"
             "  🔍 Search the web for relevant sources\n"

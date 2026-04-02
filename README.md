@@ -3,9 +3,11 @@
 > **AIMS RIC · Doctoral Training School 2026**
 > *A working demonstration prototype built for the DTS 2026 programme.*
 
-**Authors:** Jérémie N. Mabiala · Samuel I. Kargbo · Cecilia Akyeampong · Abigail Nunoo · Lambert
+**Authors:** Jérémie N. Mabiala · Samuel I. Kargbo · Cecilia Akyeampong · Abigail Nunoo · Lambert Bizimana
 
-ML-ESS takes a natural language research question and returns a structured, evidence-backed report — automatically. It orchestrates four specialised AI agents, exposes a REST API, and provides a real-time web interface.
+ML-ESS takes a natural language research question and returns a structured, evidence-backed report — automatically. It orchestrates four specialised AI agents, exposes a REST API, provides a real-time web interface, and is accessible via a Telegram bot.
+
+**Live demo:** [research-agent-phi-six.vercel.app](https://research-agent-phi-six.vercel.app)
 
 ---
 
@@ -13,16 +15,93 @@ ML-ESS takes a natural language research question and returns a structured, evid
 
 Each research job passes through four sequential agents:
 
-1. **Search** — generates queries, fetches web sources, extracts structured evidence
-2. **Synthesis** — groups evidence into themes, detects contradictions
-3. **Report** — writes a structured, cited Markdown report (~2 000 words)
-4. **Evaluator** — scores the report on coverage, faithfulness, hallucination rate, and usefulness
+```mermaid
+flowchart LR
+    Q([Research<br/> Question])
+    S[Search<br/> Agent]
+    SY[Synthesis<br/>Agent]
+    R[Report<br/> Agent]
+    E[Evaluator]
+    O([Scored<br/>Report])
+
+    Q --> S
+    S --> SY
+    SY --> R
+    R --> E
+    E --> O
+
+    S:::stage
+    SY:::stage
+    R:::stage
+    E:::stage
+
+    classDef stage fill:#0d7c7c,color:#fff,stroke:none
+```
+
+| Agent | What it does |
+|---|---|
+| **Search** | Generates queries, fetches web sources, extracts structured evidence |
+| **Synthesis** | Groups evidence into themes, detects contradictions |
+| **Report** | Writes a structured, cited Markdown report (~2 000 words) |
+| **Evaluator** | Scores on coverage, faithfulness, hallucination rate, and usefulness |
 
 Jobs run in the background. All intermediate state is persisted in SQLite. The frontend polls for updates and renders live progress via Server-Sent Events.
 
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> pending
+    pending --> searching
+    searching --> synthesising
+    synthesising --> reporting
+    reporting --> evaluating
+    evaluating --> completed
+    evaluating --> failed
+    completed --> [*]
+    failed --> [*]
 ```
-pending → searching → synthesising → reporting → evaluating → completed
-                                                             ↘ failed
+
+---
+
+## Folder structure
+
+```
+ml-ess/
+├── api/                        # Python backend
+│   ├── main.py                 # Uvicorn entry point & CLI
+│   ├── requirements.txt
+│   ├── app/
+│   │   ├── agents/
+│   │   │   ├── search.py       # Stage 1 — query, fetch, extract evidence
+│   │   │   ├── synthesis.py    # Stage 2 — themes & contradictions
+│   │   │   ├── report.py       # Stage 3 — outline + full report
+│   │   │   └── evaluator.py    # Stage 4 — quality scores
+│   │   ├── core/
+│   │   │   ├── pipeline.py     # Orchestrates the four agents
+│   │   │   ├── llm.py          # chat() / chat_json() + Groq→HF fallback
+│   │   │   ├── jobs.py         # Job manager, SSE event emitter
+│   │   │   └── store.py        # SQLite WAL persistence
+│   │   ├── api/
+│   │   │   ├── routes.py       # FastAPI endpoints
+│   │   │   ├── auth.py         # X-API-Key middleware
+│   │   │   └── webhook.py      # Telegram / WhatsApp webhooks
+│   │   └── models/
+│   │       ├── state.py        # SharedState + sub-models (Pydantic v2)
+│   │       └── api.py          # Request / response schemas
+│   └── tests/
+│       ├── test_agents.py
+│       └── test_api.py
+├── frontend/                   # Next.js 16 web UI
+│   ├── app/                    # App Router pages & layouts
+│   ├── components/             # ResearchForm, JobStatus, ReportView, …
+│   ├── hooks/
+│   │   └── useSSE.ts           # Server-Sent Events subscription hook
+│   └── lib/
+│       └── api.ts              # Typed fetch client
+└── ressources/
+    ├── report/latex/           # LaTeX technical report
+    ├── slides/                 # Beamer presentation
+    └── notebook/               # Jupyter walkthroughs
 ```
 
 ---
@@ -40,7 +119,9 @@ pending → searching → synthesising → reporting → evaluating → complete
 | Database | SQLite (WAL mode) |
 | PDF export | WeasyPrint |
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS v4 |
-| Hosting (FE) | Vercel |
+| Telegram bot | python-telegram-bot — conversational research interface |
+| Hosting (FE) | Vercel — [research-agent-phi-six.vercel.app](https://research-agent-phi-six.vercel.app) |
+| Hosting (BE) | Render — Python/FastAPI service |
 
 ---
 
@@ -162,6 +243,39 @@ curl -X POST http://localhost:8000/api/research \
   -H "X-API-Key: your-key" \
   -d '{"question": "What are the opportunities and risks of adopting AI in healthcare?"}'
 ```
+
+---
+
+## Telegram bot
+
+The bot exposes the full research pipeline via chat.
+
+1. Send any research question to the bot
+2. It acknowledges, starts a background job, and sends progress updates at each pipeline stage
+3. The final report is delivered as chunked messages with quality scores
+
+Set the following env vars in `api/.env`:
+
+| Variable | Description |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | Token from [@BotFather](https://t.me/BotFather) |
+| `WEBHOOK_SECRET` | Optional secret for webhook validation |
+
+Register the webhook once the backend is live:
+```bash
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<your-render-url>/api/webhook/telegram"
+```
+
+---
+
+## Deployment
+
+| Service | Platform | URL |
+|---|---|---|
+| Frontend | Vercel | [research-agent-phi-six.vercel.app](https://research-agent-phi-six.vercel.app) |
+| Backend API | Render | your Render service URL |
+
+Set all required environment variables in each platform's dashboard (same variables as `api/.env`). The frontend needs `NEXT_PUBLIC_API_URL` pointing to the Render service URL and `NEXT_PUBLIC_API_KEY` matching the backend `API_KEY`.
 
 ---
 
