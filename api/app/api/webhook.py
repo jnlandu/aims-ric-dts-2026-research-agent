@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hmac
 import hashlib
+import io
 import logging
 import re
 import textwrap
@@ -273,11 +274,11 @@ def _markdown_to_telegram(md: str) -> str:
     return text.strip()
 
 
-def _send_telegram_message(chat_id: int | str, text: str, parse_mode: str | None = None) -> None:
-    """Send a single text message via Telegram Bot API."""
+def _send_telegram_message(chat_id: int | str, text: str, parse_mode: str | None = None) -> int | None:
+    """Send a single text message via Telegram Bot API. Returns the message_id on success."""
     if not config.TELEGRAM_BOT_TOKEN:
         logger.warning("Telegram not configured — skipping send to %s", chat_id)
-        return
+        return None
 
     url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
     payload: dict = {
@@ -291,8 +292,56 @@ def _send_telegram_message(chat_id: int | str, text: str, parse_mode: str | None
             resp = client.post(url, json=payload)
             resp.raise_for_status()
         logger.info("Telegram message sent to %s", chat_id)
+        return resp.json().get("result", {}).get("message_id")
     except Exception as exc:
         logger.error("Failed to send Telegram message: %s", exc)
+        return None
+
+
+def _edit_telegram_message(chat_id: int | str, message_id: int, text: str) -> None:
+    """Edit an existing Telegram message in-place."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/editMessageText"
+    try:
+        with httpx.Client(timeout=10) as client:
+            client.post(url, json={
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text[:_TG_MAX_LEN],
+            })
+    except Exception as exc:
+        logger.error("Failed to edit Telegram message: %s", exc)
+
+
+def _send_telegram_chat_action(chat_id: int | str, action: str = "typing") -> None:
+    """Send a chat action (e.g. 'typing') to show activity in Telegram."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendChatAction"
+    try:
+        with httpx.Client(timeout=5) as client:
+            client.post(url, json={"chat_id": chat_id, "action": action})
+    except Exception as exc:
+        logger.error("Failed to send chat action: %s", exc)
+
+
+def _send_telegram_document(chat_id: int | str, filename: str, data: bytes, caption: str = "") -> None:
+    """Send a file (e.g. PDF) to a Telegram chat via sendDocument."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendDocument"
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                url,
+                data={"chat_id": str(chat_id), "caption": caption[:1024]},
+                files={"document": (filename, io.BytesIO(data), "application/pdf")},
+            )
+            resp.raise_for_status()
+        logger.info("Telegram document sent to %s: %s", chat_id, filename)
+    except Exception as exc:
+        logger.error("Failed to send Telegram document: %s", exc)
 
 
 def _send_telegram_chunked(chat_id: int | str, text: str) -> None:
@@ -343,24 +392,43 @@ def _extract_telegram_message(body: dict) -> tuple[int, str] | None:
 
 # ── Telegram delivery callbacks ──────────────────────────────────────────────
 
-def _make_telegram_progress_callback(chat_id: int | str):
-    """Return a callback that sends stage updates to the Telegram user."""
+_PROGRESS_STEPS: dict[JobStatus, str] = {
+    JobStatus.SEARCHING:    "🔍 Searching the web…\n⬜⬜⬜⬜ Step 1/4",
+    JobStatus.SYNTHESISING: "🧠 Synthesising evidence…\n🟩⬜⬜⬜ Step 2/4",
+    JobStatus.REPORTING:    "📝 Writing report…\n🟩🟩⬜⬜ Step 3/4",
+    JobStatus.EVALUATING:   "✅ Evaluating quality…\n🟩🟩🟩⬜ Step 4/4",
+}
+
+
+def _make_telegram_progress_callback(chat_id: int | str, status_message_id: int | None):
+    """Return a callback that edits a single status message at each stage."""
+    _msg_id: list[int | None] = [status_message_id]
+
     def on_progress(job_id: str, status: JobStatus) -> None:
-        label = _STATUS_EMOJI.get(status, str(status.value))
-        if status in (JobStatus.SEARCHING, JobStatus.SYNTHESISING, JobStatus.REPORTING, JobStatus.EVALUATING):
-            _send_telegram_message(chat_id, label)
+        label = _PROGRESS_STEPS.get(status)
+        if not label:
+            return
+        if _msg_id[0]:
+            _edit_telegram_message(chat_id, _msg_id[0], label)
+        else:
+            _msg_id[0] = _send_telegram_message(chat_id, label)
     return on_progress
 
 
-def _make_telegram_complete_callback(chat_id: int | str):
-    """Return a callback that delivers the final report (or error) to the Telegram user."""
+def _make_telegram_complete_callback(chat_id: int | str, status_message_id: int | None, question: str):
+    """Return a callback that delivers the final report (and PDF) to the Telegram user."""
+    _msg_id: list[int | None] = [status_message_id]
+
     def on_complete(job_id: str, job: JobResult) -> None:
         if job.status == JobStatus.FAILED:
-            _send_telegram_message(
-                chat_id,
+            msg = (
                 f"❌ Research failed.\n\nError: {job.error[:500]}\n\n"
-                f"Please try again or rephrase your question.",
+                f"Please try again or rephrase your question."
             )
+            if _msg_id[0]:
+                _edit_telegram_message(chat_id, _msg_id[0], msg)
+            else:
+                _send_telegram_message(chat_id, msg)
             return
 
         scores = ""
@@ -373,15 +441,34 @@ def _make_telegram_complete_callback(chat_id: int | str):
                 f"  • Hallucination risk: {job.evaluation.hallucination_rate:.0%}"
             )
 
-        header = (
-            f"✅ Research complete!\n\n"
+        summary = (
+            f"🟩🟩🟩🟩 Done!\n\n"
             f"📚 {job.sources_count} sources · {job.evidence_count} evidence pieces · {job.themes_count} themes"
-            f"{scores}\n\n"
-            f"─── Report ───\n\n"
+            f"{scores}"
         )
+        if _msg_id[0]:
+            _edit_telegram_message(chat_id, _msg_id[0], summary)
 
         report_text = _markdown_to_telegram(job.report)
+        header = f"─── Report ───\n\n"
         _send_telegram_chunked(chat_id, header + report_text)
+
+        # Send PDF as a downloadable file
+        try:
+            import markdown as md_lib
+            import weasyprint
+
+            html_body = md_lib.markdown(job.report, extensions=["tables", "fenced_code"])
+            html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>body{{font-family:Georgia,serif;max-width:800px;margin:40px auto;font-size:11pt;line-height:1.6}}
+h1,h2,h3{{color:#00467f}}table{{border-collapse:collapse;width:100%}}
+th,td{{border:1px solid #ccc;padding:6px}}img{{max-width:100%}}</style>
+</head><body><h1>{job.question}</h1><hr>{html_body}</body></html>"""
+            pdf_bytes = weasyprint.HTML(string=html).write_pdf()
+            slug = re.sub(r"[^a-zA-Z0-9 _-]", "", question[:40]).strip().replace(" ", "_")
+            _send_telegram_document(chat_id, f"{slug}_report.pdf", pdf_bytes, caption="📄 Full report as PDF")
+        except Exception as exc:
+            logger.warning("Could not generate PDF for Telegram: %s", exc)
 
     return on_complete
 
@@ -399,35 +486,52 @@ async def telegram_inbound(request: Request):
 
     chat_id, text = result
 
-    # Ignore bot commands like /start — only process research questions
     if text.startswith("/start"):
         _send_telegram_message(
             chat_id,
             "👋 Welcome to ML-ESS Research Assistant!\n\n"
             "Send me any research question and I'll produce a structured, "
             "evidence-backed report with quality scores.\n\n"
-            "Example: What are the trade-offs between CNNs and Vision Transformers for medical imaging?",
+            "Commands:\n"
+            "  /help — show this message\n\n"
+            "Example:\n"
+            "What are the trade-offs between CNNs and Vision Transformers for medical imaging?",
         )
         return {"status": "start"}
 
+    if text.startswith("/help"):
+        _send_telegram_message(
+            chat_id,
+            "🤖 *ML-ESS Research Assistant*\n\n"
+            "Send any research question as plain text.\n\n"
+            "The pipeline will:\n"
+            "  🔍 Search the web for relevant sources\n"
+            "  🧠 Synthesise evidence into themes\n"
+            "  📝 Write a structured cited report\n"
+            "  ✅ Evaluate coverage & faithfulness\n\n"
+            "You'll receive live progress updates, the full report, and a PDF download.",
+        )
+        return {"status": "help"}
+
     if text.startswith("/"):
-        _send_telegram_message(chat_id, "Send me a research question as plain text.")
+        _send_telegram_message(chat_id, "Unknown command. Send /help for usage.")
         return {"status": "ignored"}
 
     logger.info("Telegram message from %s: %s", chat_id, text[:80])
 
-    job = create_job(
-        text,
-        on_progress=_make_telegram_progress_callback(chat_id),
-        on_complete=_make_telegram_complete_callback(chat_id),
+    # Show typing indicator while we create the job
+    _send_telegram_chat_action(chat_id, "typing")
+
+    # Send the status message we'll edit for live progress
+    status_msg_id = _send_telegram_message(
+        chat_id,
+        f"🔍 Research started!\n\nQuestion: {text[:200]}\n\n⬜⬜⬜⬜ Queued…",
     )
 
-    _send_telegram_message(
-        chat_id,
-        f"🔍 Research started!\n\n"
-        f"Question: {text[:200]}\n"
-        f"Job ID: {job.job_id}\n\n"
-        f"I'll send you progress updates and the full report when it's ready.",
+    job = create_job(
+        text,
+        on_progress=_make_telegram_progress_callback(chat_id, status_msg_id),
+        on_complete=_make_telegram_complete_callback(chat_id, status_msg_id, text),
     )
 
     return {"status": "accepted", "job_id": job.job_id}
