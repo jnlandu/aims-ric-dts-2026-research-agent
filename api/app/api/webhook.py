@@ -17,6 +17,7 @@ from __future__ import annotations
 import hmac
 import hashlib
 import logging
+import re
 import textwrap
 
 import httpx
@@ -235,6 +236,42 @@ async def whatsapp_inbound(request: Request):
 # Telegram max message length
 _TG_MAX_LEN = 4096
 
+# Regex patterns for Markdown → Telegram conversion
+_MERMAID_RE = re.compile(r"```mermaid\s*\n.*?```", re.DOTALL)
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+_IMG_RE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
+_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+
+def _markdown_to_telegram(md: str) -> str:
+    """Convert a Markdown report to clean Telegram-friendly plain text.
+
+    - Strips Mermaid code blocks (not renderable)
+    - Strips HTML tags
+    - Converts headings to bold uppercase lines
+    - Converts images to alt text
+    - Converts links to "text (url)" format
+    - Preserves bold/italic (Telegram supports these in plain mode)
+    """
+    text = _MERMAID_RE.sub("", md)
+    text = _HTML_TAG_RE.sub("", text)
+    text = _IMG_RE.sub(r"[Image: \1]", text)
+    text = _LINK_RE.sub(r"\1 (\2)", text)
+
+    def _heading_to_bold(m: re.Match) -> str:
+        level = len(m.group(1))
+        title = m.group(2).strip()
+        if level <= 2:
+            return f"\n{'━' * 30}\n  {title.upper()}\n{'━' * 30}"
+        return f"\n▸ {title}"
+
+    text = _HEADING_RE.sub(_heading_to_bold, text)
+
+    # Collapse 3+ blank lines into 2
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
 
 def _send_telegram_message(chat_id: int | str, text: str, parse_mode: str | None = None) -> None:
     """Send a single text message via Telegram Bot API."""
@@ -343,7 +380,8 @@ def _make_telegram_complete_callback(chat_id: int | str):
             f"─── Report ───\n\n"
         )
 
-        _send_telegram_chunked(chat_id, header + job.report)
+        report_text = _markdown_to_telegram(job.report)
+        _send_telegram_chunked(chat_id, header + report_text)
 
     return on_complete
 
