@@ -46,6 +46,9 @@ WHATSAPP_TOKEN: str = os.getenv("WHATSAPP_TOKEN", "")
 WHATSAPP_PHONE_ID: str = os.getenv("WHATSAPP_PHONE_ID", "")
 WHATSAPP_VERIFY_TOKEN: str = os.getenv("WHATSAPP_VERIFY_TOKEN", "")
 
+# ── Telegram ─────────────────────────────────────────────────────────────────
+TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
 # ── Database ─────────────────────────────────────────────────────────────────
 # Path to the SQLite database file (relative to the api/ working directory).
 DB_PATH: str = os.getenv("DB_PATH", "data/jobs.db")
