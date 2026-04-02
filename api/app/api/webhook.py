@@ -14,12 +14,13 @@ Telegram Bot API flow:
 
 from __future__ import annotations
 
-import hmac
+import base64
 import hashlib
+import hmac
+import html as _html
 import io
 import logging
 import re
-import textwrap
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -237,41 +238,98 @@ async def whatsapp_inbound(request: Request):
 # Telegram max message length
 _TG_MAX_LEN = 4096
 
-# Regex patterns for Markdown → Telegram conversion
-_MERMAID_RE = re.compile(r"```mermaid\s*\n.*?```", re.DOTALL)
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
+# ── Markdown → Telegram HTML conversion ──────────────────────────────────────
+
+_FENCE_RE = re.compile(r"```(\w*)\n?(.*?)```", re.DOTALL)
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
-_IMG_RE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
-_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
 
 
-def _markdown_to_telegram(md: str) -> str:
-    """Convert a Markdown report to clean Telegram-friendly plain text.
+def _prose_to_html(text: str) -> str:
+    """Convert a prose Markdown section (no fenced blocks) to Telegram HTML.
 
-    - Strips Mermaid code blocks (not renderable)
-    - Strips HTML tags
-    - Converts headings to bold uppercase lines
-    - Converts images to alt text
-    - Converts links to "text (url)" format
-    - Preserves bold/italic (Telegram supports these in plain mode)
+    Steps: save inline code → escape HTML special chars → apply formatting.
     """
-    text = _MERMAID_RE.sub("", md)
-    text = _HTML_TAG_RE.sub("", text)
-    text = _IMG_RE.sub(r"[Image: \1]", text)
-    text = _LINK_RE.sub(r"\1 (\2)", text)
+    # Save inline code to avoid double-escaping its content
+    saved_inline: list[str] = []
 
-    def _heading_to_bold(m: re.Match) -> str:
+    def save_inline(m: re.Match) -> str:
+        saved_inline.append(_html.escape(m.group(1)))
+        return f"\x00IC{len(saved_inline) - 1}\x00"
+
+    text = re.sub(r"`([^`\n]+)`", save_inline, text)
+
+    # Strip any remaining HTML tags from the source
+    text = re.sub(r"<[^>]+>", "", text)
+
+    # Escape HTML special chars in plain text
+    text = _html.escape(text, quote=False)
+
+    # Headings → bold lines
+    def fmt_heading(m: re.Match) -> str:
         level = len(m.group(1))
         title = m.group(2).strip()
-        if level <= 2:
-            return f"\n{'━' * 30}\n  {title.upper()}\n{'━' * 30}"
-        return f"\n▸ {title}"
+        return f"\n<b>━━ {title.upper()} ━━</b>\n" if level <= 2 else f"\n<b>▸ {title}</b>"
 
-    text = _HEADING_RE.sub(_heading_to_bold, text)
+    text = _HEADING_RE.sub(fmt_heading, text)
 
-    # Collapse 3+ blank lines into 2
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    # Bold, italic
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.DOTALL)
+    text = re.sub(r"__(.+?)__", r"<b>\1</b>", text, flags=re.DOTALL)
+    text = re.sub(r"\*(.+?)\*", r"<i>\1</i>", text)
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"<i>\1</i>", text)
+
+    # Images → label only
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", "🖼", text)
+
+    # Links → clickable
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', text)
+
+    # Restore inline code
+    for i, code in enumerate(saved_inline):
+        text = text.replace(f"\x00IC{i}\x00", f"<code>{code}</code>")
+
+    return text
+
+
+def _markdown_to_telegram_html(md: str) -> tuple[str, list[str]]:
+    """Convert a Markdown report to Telegram HTML + a list of Mermaid diagram strings.
+
+    Returns (html_text, mermaid_codes) where each mermaid_code can be rendered
+    as an image via mermaid.ink.
+    """
+    mermaid_codes: list[str] = []
+    parts: list[str] = []
+    last_end = 0
+
+    for m in _FENCE_RE.finditer(md):
+        # Convert prose before this fence
+        if m.start() > last_end:
+            parts.append(_prose_to_html(md[last_end:m.start()]))
+
+        lang = m.group(1).strip().lower()
+        content = m.group(2)
+
+        if lang == "mermaid":
+            mermaid_codes.append(content.strip())
+            # Placeholder so surrounding text doesn't merge
+            parts.append("")
+        else:
+            parts.append(f"<pre><code>{_html.escape(content.rstrip())}</code></pre>")
+
+        last_end = m.end()
+
+    if last_end < len(md):
+        parts.append(_prose_to_html(md[last_end:]))
+
+    result = "\n".join(p for p in parts if p.strip())
+    result = re.sub(r"\n{3,}", "\n\n", result).strip()
+    return result, mermaid_codes
+
+
+def _mermaid_to_photo_url(mermaid_code: str) -> str:
+    """Return a mermaid.ink URL that renders the diagram as a PNG image."""
+    encoded = base64.urlsafe_b64encode(mermaid_code.encode("utf-8")).decode("ascii")
+    return f"https://mermaid.ink/img/{encoded}"
 
 
 def _send_telegram_message(chat_id: int | str, text: str, parse_mode: str | None = None) -> int | None:
@@ -344,10 +402,28 @@ def _send_telegram_document(chat_id: int | str, filename: str, data: bytes, capt
         logger.error("Failed to send Telegram document: %s", exc)
 
 
-def _send_telegram_chunked(chat_id: int | str, text: str) -> None:
+def _send_telegram_photo(chat_id: int | str, photo_url: str, caption: str = "") -> None:
+    """Send an image URL as a Telegram photo message."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        return
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendPhoto"
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.post(url, json={
+                "chat_id": chat_id,
+                "photo": photo_url,
+                "caption": caption[:1024],
+            })
+            resp.raise_for_status()
+        logger.info("Telegram photo sent to %s", chat_id)
+    except Exception as exc:
+        logger.error("Failed to send Telegram photo: %s", exc)
+
+
+def _send_telegram_chunked(chat_id: int | str, text: str, parse_mode: str | None = None) -> None:
     """Send a long message as multiple Telegram messages, splitting on paragraph boundaries."""
     if len(text) <= _TG_MAX_LEN:
-        _send_telegram_message(chat_id, text)
+        _send_telegram_message(chat_id, text, parse_mode=parse_mode)
         return
 
     chunks: list[str] = []
@@ -371,7 +447,7 @@ def _send_telegram_chunked(chat_id: int | str, text: str) -> None:
     total = len(chunks)
     for idx, chunk in enumerate(chunks, 1):
         header = f"[{idx}/{total}]\n\n" if total > 1 else ""
-        _send_telegram_message(chat_id, header + chunk)
+        _send_telegram_message(chat_id, header + chunk, parse_mode=parse_mode)
 
 
 def _extract_telegram_message(body: dict) -> tuple[int, str] | None:
@@ -515,9 +591,15 @@ def _make_telegram_complete_callback(chat_id: int | str, status_message_id: int 
         if _msg_id[0]:
             _edit_telegram_message(chat_id, _msg_id[0], summary)
 
-        report_text = _markdown_to_telegram(job.report)
-        header = f"─── Report ───\n\n"
-        _send_telegram_chunked(chat_id, header + report_text)
+        report_html, mermaid_diagrams = _markdown_to_telegram_html(job.report)
+        header = "<b>─── Report ───</b>\n\n"
+        _send_telegram_chunked(chat_id, header + report_html, parse_mode="HTML")
+
+        # Send each Mermaid diagram as a rendered image
+        for i, diagram_code in enumerate(mermaid_diagrams, 1):
+            photo_url = _mermaid_to_photo_url(diagram_code)
+            caption = f"📊 Diagram {i}/{len(mermaid_diagrams)}" if len(mermaid_diagrams) > 1 else "📊 Diagram"
+            _send_telegram_photo(chat_id, photo_url, caption=caption)
 
         # Send PDF as a downloadable file
         try:
