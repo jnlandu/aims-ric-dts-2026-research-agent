@@ -106,8 +106,17 @@ def _write_report(client, state: SharedState) -> str:
           from the Sources list, e.g. [1], [2]. Each number maps to a unique
           URL — do NOT duplicate references. Only use source numbers that
           appear in the provided Sources list.
-        - The References section at the end must list each source ONCE in the
-          format:  [n] Author/Title. URL
+        - The References section at the end must list each source ONCE.
+          CRITICAL: each reference must be on its own separate line with a
+          blank line between entries. Use exactly this format:
+
+          [1] Title of first source. https://url-of-first-source.com
+
+          [2] Title of second source. https://url-of-second-source.com
+
+          [3] Title of third source. https://url-of-third-source.com
+
+          NEVER put multiple references on the same line.
           Do not repeat the same source under different numbers.
         - Include a Limitations section acknowledging gaps and uncertainties.
         - Where sources disagree, present both perspectives fairly.
@@ -142,6 +151,39 @@ def _write_report(client, state: SharedState) -> str:
     return chat(client, system, user)
 
 
+# ── Output normalisation ─────────────────────────────────────────────────────
+
+import re as _re
+
+_REF_INLINE_RE = _re.compile(
+    r'(\[\d+\][^\[]+?)(?=\[\d+\])',
+)
+
+
+def _normalise_references(report: str) -> str:
+    """Ensure every reference entry is on its own line.
+
+    The LLM sometimes produces references run together on one line:
+      [1] First ref. URL [2] Second ref. URL
+    This splits them so each [n] starts on a new line.
+    """
+    # Find the References section
+    marker = _re.search(r'^#{1,3}\s*References', report, _re.MULTILINE)
+    if not marker:
+        return report
+
+    body = report[: marker.start()]
+    refs_section = report[marker.start() :]
+
+    # Split inline refs: insert a newline before each [n] that follows text
+    refs_section = _re.sub(r'(?<=\S)(\s*)(\[\d+\])', r'\n\n\2', refs_section)
+
+    # Collapse 3+ blank lines down to 2
+    refs_section = _re.sub(r'\n{3,}', '\n\n', refs_section)
+
+    return body + refs_section
+
+
 def run(state: SharedState, on_event=None) -> SharedState:
     logger.info("ReportAgent: starting...")
     client = get_client()
@@ -158,7 +200,7 @@ def run(state: SharedState, on_event=None) -> SharedState:
     if on_event:
         on_event("report_outline_generated", {"outline": state.report_outline})
 
-    state.final_report = _write_report(client, state)
+    state.final_report = _normalise_references(_write_report(client, state))
     logger.info("Report generated (%d chars)", len(state.final_report))
     if on_event:
         on_event("report_generated", {"length": len(state.final_report), "preview": state.final_report[:500]})

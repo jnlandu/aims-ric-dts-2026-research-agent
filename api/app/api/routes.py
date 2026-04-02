@@ -191,6 +191,14 @@ def download_pdf(job_id: str):
   th, td {{ border: 1px solid #ccc; padding: 6px 10px; text-align: left; }}
   th {{ background: #f0f0f0; }}
   img {{ max-width: 100%; height: auto; }}
+  /* References: wrap long URLs and keep each entry on its own line */
+  h2#references ~ p, h2#references ~ ol, h2#references ~ ul,
+  h3#references ~ p, h3#references ~ ol, h3#references ~ ul {{
+    word-break: break-all;
+    overflow-wrap: break-word;
+  }}
+  /* Catch plain-paragraph reference lists (no list element) */
+  p {{ word-break: break-word; overflow-wrap: break-word; }}
 </style>
 </head><body>
 <h1>{job.question}</h1>
