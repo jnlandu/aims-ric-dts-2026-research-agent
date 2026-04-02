@@ -1,10 +1,15 @@
-"""Webhook endpoints — WhatsApp Business API + generic webhook.
+"""Webhook endpoints — WhatsApp Business API, Telegram Bot API + generic webhook.
 
 WhatsApp Cloud API flow:
 1. Meta sends GET  /webhook/whatsapp?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...
 2. We verify and return the challenge.
 3. Meta sends POST /webhook/whatsapp with message payloads.
 4. We extract the text, run a research job, and send back results.
+
+Telegram Bot API flow:
+1. Set webhook via https://api.telegram.org/bot<TOKEN>/setWebhook?url=<URL>/webhook/telegram
+2. Telegram sends POST /webhook/telegram with Update JSON.
+3. We extract the text, run a research job, and send back results.
 """
 
 from __future__ import annotations
@@ -214,6 +219,173 @@ async def whatsapp_inbound(request: Request):
     # Send acknowledgement
     _send_whatsapp_message(
         sender,
+        f"🔍 Research started!\n\n"
+        f"Question: {text[:200]}\n"
+        f"Job ID: {job.job_id}\n\n"
+        f"I'll send you progress updates and the full report when it's ready.",
+    )
+
+    return {"status": "accepted", "job_id": job.job_id}
+
+
+# ── Generic webhook endpoint ────────────────────────────────────────────────
+
+# ── Telegram helpers ─────────────────────────────────────────────────────────
+
+# Telegram max message length
+_TG_MAX_LEN = 4096
+
+
+def _send_telegram_message(chat_id: int | str, text: str, parse_mode: str | None = None) -> None:
+    """Send a single text message via Telegram Bot API."""
+    if not config.TELEGRAM_BOT_TOKEN:
+        logger.warning("Telegram not configured — skipping send to %s", chat_id)
+        return
+
+    url = f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload: dict = {
+        "chat_id": chat_id,
+        "text": text[:_TG_MAX_LEN],
+    }
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    try:
+        with httpx.Client(timeout=10) as client:
+            resp = client.post(url, json=payload)
+            resp.raise_for_status()
+        logger.info("Telegram message sent to %s", chat_id)
+    except Exception as exc:
+        logger.error("Failed to send Telegram message: %s", exc)
+
+
+def _send_telegram_chunked(chat_id: int | str, text: str) -> None:
+    """Send a long message as multiple Telegram messages, splitting on paragraph boundaries."""
+    if len(text) <= _TG_MAX_LEN:
+        _send_telegram_message(chat_id, text)
+        return
+
+    chunks: list[str] = []
+    current = ""
+    for paragraph in text.split("\n\n"):
+        candidate = f"{current}\n\n{paragraph}" if current else paragraph
+        if len(candidate) > _TG_MAX_LEN:
+            if current:
+                chunks.append(current)
+            if len(paragraph) > _TG_MAX_LEN:
+                for i in range(0, len(paragraph), _TG_MAX_LEN):
+                    chunks.append(paragraph[i : i + _TG_MAX_LEN])
+                current = ""
+            else:
+                current = paragraph
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+
+    total = len(chunks)
+    for idx, chunk in enumerate(chunks, 1):
+        header = f"[{idx}/{total}]\n\n" if total > 1 else ""
+        _send_telegram_message(chat_id, header + chunk)
+
+
+def _extract_telegram_message(body: dict) -> tuple[int, str] | None:
+    """Extract (chat_id, text) from a Telegram Update payload.
+
+    Returns None if not a text message.
+    """
+    try:
+        message = body.get("message") or body.get("edited_message")
+        if not message or "text" not in message:
+            return None
+        chat_id = message["chat"]["id"]
+        text = message["text"]
+        return chat_id, text
+    except (KeyError, TypeError):
+        return None
+
+
+# ── Telegram delivery callbacks ──────────────────────────────────────────────
+
+def _make_telegram_progress_callback(chat_id: int | str):
+    """Return a callback that sends stage updates to the Telegram user."""
+    def on_progress(job_id: str, status: JobStatus) -> None:
+        label = _STATUS_EMOJI.get(status, str(status.value))
+        if status in (JobStatus.SEARCHING, JobStatus.SYNTHESISING, JobStatus.REPORTING, JobStatus.EVALUATING):
+            _send_telegram_message(chat_id, label)
+    return on_progress
+
+
+def _make_telegram_complete_callback(chat_id: int | str):
+    """Return a callback that delivers the final report (or error) to the Telegram user."""
+    def on_complete(job_id: str, job: JobResult) -> None:
+        if job.status == JobStatus.FAILED:
+            _send_telegram_message(
+                chat_id,
+                f"❌ Research failed.\n\nError: {job.error[:500]}\n\n"
+                f"Please try again or rephrase your question.",
+            )
+            return
+
+        scores = ""
+        if job.evaluation:
+            scores = (
+                f"\n📊 Quality scores:\n"
+                f"  • Coverage: {job.evaluation.coverage:.0%}\n"
+                f"  • Faithfulness: {job.evaluation.faithfulness:.0%}\n"
+                f"  • Usefulness: {job.evaluation.usefulness:.0%}\n"
+                f"  • Hallucination risk: {job.evaluation.hallucination_rate:.0%}"
+            )
+
+        header = (
+            f"✅ Research complete!\n\n"
+            f"📚 {job.sources_count} sources · {job.evidence_count} evidence pieces · {job.themes_count} themes"
+            f"{scores}\n\n"
+            f"─── Report ───\n\n"
+        )
+
+        _send_telegram_chunked(chat_id, header + job.report)
+
+    return on_complete
+
+
+# ── Telegram webhook endpoint ────────────────────────────────────────────────
+
+@router.post("/telegram")
+async def telegram_inbound(request: Request):
+    """Receive inbound Telegram messages and start research jobs."""
+    body = await request.json()
+
+    result = _extract_telegram_message(body)
+    if result is None:
+        return {"status": "ignored"}
+
+    chat_id, text = result
+
+    # Ignore bot commands like /start — only process research questions
+    if text.startswith("/start"):
+        _send_telegram_message(
+            chat_id,
+            "👋 Welcome to ML-ESS Research Assistant!\n\n"
+            "Send me any research question and I'll produce a structured, "
+            "evidence-backed report with quality scores.\n\n"
+            "Example: What are the trade-offs between CNNs and Vision Transformers for medical imaging?",
+        )
+        return {"status": "start"}
+
+    if text.startswith("/"):
+        _send_telegram_message(chat_id, "Send me a research question as plain text.")
+        return {"status": "ignored"}
+
+    logger.info("Telegram message from %s: %s", chat_id, text[:80])
+
+    job = create_job(
+        text,
+        on_progress=_make_telegram_progress_callback(chat_id),
+        on_complete=_make_telegram_complete_callback(chat_id),
+    )
+
+    _send_telegram_message(
+        chat_id,
         f"🔍 Research started!\n\n"
         f"Question: {text[:200]}\n"
         f"Job ID: {job.job_id}\n\n"
