@@ -19,6 +19,7 @@ def run_pipeline(
     output_dir: str | None = "output",
     on_stage: Optional[Callable[[JobStatus], None]] = None,
     on_event: Optional[Callable[[str, dict[str, Any] | None], None]] = None,
+    language: str = "English",
 ) -> SharedState:
     """Run the full research pipeline for a given question.
 
@@ -30,7 +31,7 @@ def run_pipeline(
 
     Returns the final SharedState.
     """
-    state = SharedState(research_question=question)
+    state = SharedState(research_question=question, language=language)
     logger.info("Pipeline started | question=%s", question)
 
     if on_event:

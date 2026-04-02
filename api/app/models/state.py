@@ -64,6 +64,7 @@ class EvaluationScores(BaseModel):
 
 class SharedState(BaseModel):
     research_question: str = ""
+    language: str = "English"
 
     # SearchAgent
     search_queries: list[str] = Field(default_factory=list)
