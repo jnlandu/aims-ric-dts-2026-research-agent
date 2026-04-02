@@ -526,10 +526,10 @@ def _make_telegram_complete_callback(chat_id: int | str, status_message_id: int 
 
             html_body = md_lib.markdown(job.report, extensions=["tables", "fenced_code"])
             html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>body{{font-family:Georgia,serif;max-width:800px;margin:40px auto;font-size:11pt;line-height:1.6}}
-h1,h2,h3{{color:#00467f}}table{{border-collapse:collapse;width:100%}}
-th,td{{border:1px solid #ccc;padding:6px}}img{{max-width:100%}}</style>
-</head><body><h1>{job.question}</h1><hr>{html_body}</body></html>"""
+            <style>body{{font-family:Georgia,serif;max-width:800px;margin:40px auto;font-size:11pt;line-height:1.6}}
+            h1,h2,h3{{color:#00467f}}table{{border-collapse:collapse;width:100%}}
+            th,td{{border:1px solid #ccc;padding:6px}}img{{max-width:100%}}</style>
+            </head><body><h1>{job.question}</h1><hr>{html_body}</body></html>"""
             pdf_bytes = weasyprint.HTML(string=html).write_pdf()
             slug = re.sub(r"[^a-zA-Z0-9 _-]", "", question[:40]).strip().replace(" ", "_")
             _send_telegram_document(chat_id, f"{slug}_report.pdf", pdf_bytes, caption="📄 Full report as PDF")

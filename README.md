@@ -3,7 +3,7 @@
 > **AIMS RIC · Doctoral Training School 2026**
 > *A working demonstration prototype built for the DTS 2026 programme.*
 
-**Authors:** Jérémie N. Mabiala · Samuel I. Kargbo · Cecilia Akyeampong · Abigail Nunoo · Lambert Bizimana
+**Authors:** Jérémie (Jeje) N. Mabiala · Samuel I. Kargbo · Cecilia Akyeampong · Abigail Nunoo · Lambert Bizimana
 
 ML-ESS takes a natural language research question and returns a structured, evidence-backed report — automatically. It orchestrates four specialised AI agents, exposes a REST API, provides a real-time web interface, and is accessible via a Telegram bot.
 
