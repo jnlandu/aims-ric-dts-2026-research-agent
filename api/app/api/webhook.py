@@ -390,6 +390,72 @@ def _extract_telegram_message(body: dict) -> tuple[int, str] | None:
         return None
 
 
+def _extract_telegram_voice(body: dict) -> tuple[int, str] | None:
+    """Extract (chat_id, file_id) from a Telegram Update containing a voice message.
+
+    Returns None if not a voice message.
+    """
+    try:
+        message = body.get("message") or body.get("edited_message")
+        if not message or "voice" not in message:
+            return None
+        chat_id = message["chat"]["id"]
+        file_id = message["voice"]["file_id"]
+        return chat_id, file_id
+    except (KeyError, TypeError):
+        return None
+
+
+def _download_telegram_voice(file_id: str) -> bytes | None:
+    """Download a voice message audio file from Telegram.
+
+    Calls getFile to resolve the path, then downloads the raw OGG bytes.
+    Returns None on any failure.
+    """
+    if not config.TELEGRAM_BOT_TOKEN:
+        return None
+    try:
+        with httpx.Client(timeout=15) as client:
+            r = client.get(
+                f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/getFile",
+                params={"file_id": file_id},
+            )
+            r.raise_for_status()
+            file_path = r.json()["result"]["file_path"]
+
+            audio = client.get(
+                f"https://api.telegram.org/file/bot{config.TELEGRAM_BOT_TOKEN}/{file_path}"
+            )
+            audio.raise_for_status()
+            return audio.content
+    except Exception as exc:
+        logger.error("Failed to download Telegram voice file: %s", exc)
+        return None
+
+
+def _transcribe_voice(audio_bytes: bytes) -> str | None:
+    """Transcribe audio bytes using Groq Whisper (whisper-large-v3).
+
+    Returns the transcribed text, or None on failure.
+    """
+    if not config.GROQ_API_KEY:
+        logger.error("GROQ_API_KEY not set — cannot transcribe voice")
+        return None
+    try:
+        from groq import Groq
+        client = Groq(api_key=config.GROQ_API_KEY)
+        transcription = client.audio.transcriptions.create(
+            model="whisper-large-v3",
+            file=("voice.ogg", audio_bytes, "audio/ogg"),
+        )
+        text = transcription.text.strip()
+        logger.info("Voice transcribed: %s", text[:120])
+        return text
+    except Exception as exc:
+        logger.error("Groq Whisper transcription failed: %s", exc)
+        return None
+
+
 # ── Telegram delivery callbacks ──────────────────────────────────────────────
 
 _PROGRESS_STEPS: dict[JobStatus, str] = {
@@ -477,20 +543,45 @@ th,td{{border:1px solid #ccc;padding:6px}}img{{max-width:100%}}</style>
 
 @router.post("/telegram")
 async def telegram_inbound(request: Request):
-    """Receive inbound Telegram messages and start research jobs."""
+    """Receive inbound Telegram messages (text or voice) and start research jobs."""
     body = await request.json()
 
-    result = _extract_telegram_message(body)
-    if result is None:
-        return {"status": "ignored"}
+    # ── Resolve question from text or voice ───────────────────────────────────
+    text: str | None = None
+    voice_note = False
 
-    chat_id, text = result
+    text_result = _extract_telegram_message(body)
+    if text_result is not None:
+        _, text = text_result
+        chat_id = text_result[0]
+    else:
+        voice_result = _extract_telegram_voice(body)
+        if voice_result is not None:
+            chat_id, file_id = voice_result
+            voice_note = True
+            _send_telegram_chat_action(chat_id, "typing")
+            _send_telegram_message(chat_id, "🎙️ Voice note received — transcribing…")
 
+            audio_bytes = _download_telegram_voice(file_id)
+            if audio_bytes is None:
+                _send_telegram_message(chat_id, "❌ Could not download your voice note. Please try again.")
+                return {"status": "error", "detail": "voice download failed"}
+
+            text = _transcribe_voice(audio_bytes)
+            if not text:
+                _send_telegram_message(chat_id, "❌ Could not transcribe your voice note. Please try again or type your question.")
+                return {"status": "error", "detail": "transcription failed"}
+
+            _send_telegram_message(chat_id, f"✅ Transcribed: _{text}_")
+        else:
+            return {"status": "ignored"}
+
+    # ── Handle commands ───────────────────────────────────────────────────────
     if text.startswith("/start"):
         _send_telegram_message(
             chat_id,
             "👋 Welcome to ML-ESS Research Assistant!\n\n"
-            "Send me any research question and I'll produce a structured, "
+            "Send me any research question as text or a voice note — I'll produce a structured, "
             "evidence-backed report with quality scores.\n\n"
             "Commands:\n"
             "  /help — show this message\n\n"
@@ -503,7 +594,7 @@ async def telegram_inbound(request: Request):
         _send_telegram_message(
             chat_id,
             "*ML-ESS Research Assistant*\n\n"
-            "Send any research question as plain text.\n\n"
+            "Send any research question as plain text or a 🎙️ voice note.\n\n"
             "The pipeline will:\n"
             "  🔍 Search the web for relevant sources\n"
             "  🧠 Synthesise evidence into themes\n"
@@ -517,12 +608,11 @@ async def telegram_inbound(request: Request):
         _send_telegram_message(chat_id, "Unknown command. Send /help for usage.")
         return {"status": "ignored"}
 
-    logger.info("Telegram message from %s: %s", chat_id, text[:80])
+    logger.info("Telegram %s from %s: %s", "voice" if voice_note else "text", chat_id, text[:80])
 
-    # Show typing indicator while we create the job
+    # Show typing indicator and queue the job
     _send_telegram_chat_action(chat_id, "typing")
 
-    # Send the status message we'll edit for live progress
     status_msg_id = _send_telegram_message(
         chat_id,
         f"🔍 Research started!\n\nQuestion: {text[:200]}\n\n⬜⬜⬜⬜ Queued…",
