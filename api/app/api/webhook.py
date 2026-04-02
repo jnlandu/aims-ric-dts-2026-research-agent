@@ -621,12 +621,86 @@ def _make_telegram_complete_callback(chat_id: int | str, status_message_id: int 
     return on_complete
 
 
+# ── Language preference store ────────────────────────────────────────────────
+# Keyed by Telegram chat_id (int).  Survives for the lifetime of the process.
+_user_language: dict[int | str, str] = {}
+
+_LANG_OPTIONS = {
+    "lang:en": "English",
+    "lang:fr": "French",
+}
+
+
+def _send_telegram_inline_keyboard(
+    chat_id: int | str,
+    text: str,
+    rows: list[list[dict]],
+) -> int | None:
+    """Send a message with an inline keyboard and return the message_id."""
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return None
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "reply_markup": {"inline_keyboard": rows},
+    }
+    try:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            json=payload,
+            timeout=10,
+        )
+        data = r.json()
+        if data.get("ok"):
+            return data["result"]["message_id"]
+    except Exception as exc:
+        logger.warning("_send_telegram_inline_keyboard failed: %s", exc)
+    return None
+
+
+def _answer_callback_query(callback_query_id: str, text: str = "") -> None:
+    """Acknowledge a callback query to dismiss the spinner on the button."""
+    token = settings.TELEGRAM_BOT_TOKEN
+    if not token:
+        return
+    try:
+        httpx.post(
+            f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+            json={"callback_query_id": callback_query_id, "text": text},
+            timeout=5,
+        )
+    except Exception as exc:
+        logger.warning("_answer_callback_query failed: %s", exc)
+
+
 # ── Telegram webhook endpoint ────────────────────────────────────────────────
 
 @router.post("/telegram")
 async def telegram_inbound(request: Request):
     """Receive inbound Telegram messages (text or voice) and start research jobs."""
     body = await request.json()
+
+    # ── Handle inline-keyboard callbacks (language selection) ─────────────────
+    if "callback_query" in body:
+        cq = body["callback_query"]
+        cq_id = cq["id"]
+        cq_data = cq.get("data", "")
+        cq_chat_id = cq["message"]["chat"]["id"]
+
+        if cq_data in _LANG_OPTIONS:
+            lang = _LANG_OPTIONS[cq_data]
+            _user_language[cq_chat_id] = lang
+            _answer_callback_query(cq_id, f"Language set to {lang}")
+            flag = "🇬🇧" if cq_data == "lang:en" else "🇫🇷"
+            _send_telegram_message(
+                cq_chat_id,
+                f"{flag} Language set to *{lang}*\n\nNow send me your research question!",
+            )
+        else:
+            _answer_callback_query(cq_id)
+
+        return {"status": "callback_handled"}
 
     # ── Resolve question from text or voice ───────────────────────────────────
     text: str | None = None
@@ -660,15 +734,17 @@ async def telegram_inbound(request: Request):
 
     # ── Handle commands ───────────────────────────────────────────────────────
     if text.startswith("/start"):
-        _send_telegram_message(
+        _send_telegram_inline_keyboard(
             chat_id,
             "👋 Welcome to ML-ESS Research Assistant!\n\n"
-            "Send me any research question as text or a voice note — I'll produce a structured, "
-            "evidence-backed report with quality scores.\n\n"
-            "Commands:\n"
-            "  /help — show this message\n\n"
-            "Example:\n"
-            "What are the trade-offs between CNNs and Vision Transformers for medical imaging?",
+            "I produce structured, evidence-backed research reports with quality scores.\n\n"
+            "Please choose your preferred language:",
+            rows=[
+                [
+                    {"text": "🇬🇧 English", "callback_data": "lang:en"},
+                    {"text": "🇫🇷 Français", "callback_data": "lang:fr"},
+                ]
+            ],
         )
         return {"status": "start"}
 
@@ -704,6 +780,7 @@ async def telegram_inbound(request: Request):
         text,
         on_progress=_make_telegram_progress_callback(chat_id, status_msg_id),
         on_complete=_make_telegram_complete_callback(chat_id, status_msg_id, text),
+        language=_user_language.get(chat_id, "English"),
     )
 
     return {"status": "accepted", "job_id": job.job_id}

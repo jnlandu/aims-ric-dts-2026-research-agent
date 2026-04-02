@@ -97,9 +97,11 @@ def _generate_outline(client, state: SharedState) -> list[str]:
 
 
 def _write_report(client, state: SharedState) -> str:
-    system = textwrap.dedent("""\
+    system = textwrap.dedent(f"""\
         You are an academic research report writer. Write a well-structured
         research report in Markdown following the outline provided.
+        IMPORTANT: Write the ENTIRE report in {state.language}. Every heading,
+        sentence, and reference entry must be in {state.language}.
 
         Requirements:
         - Every major claim MUST cite its source using the numbered references

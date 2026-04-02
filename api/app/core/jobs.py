@@ -62,6 +62,7 @@ def create_job(
     question: str,
     on_progress: Optional[ProgressCallback] = None,
     on_complete: Optional[CompleteCallback] = None,
+    language: str = "English",
 ) -> JobResult:
     """Create a new research job, persist it, and start a background thread."""
     job_id = uuid.uuid4().hex[:12]
@@ -71,7 +72,7 @@ def create_job(
 
     thread = threading.Thread(
         target=_run_job,
-        args=(job_id, question, on_progress, on_complete),
+        args=(job_id, question, on_progress, on_complete, language),
         daemon=True,
     )
     thread.start()
@@ -135,6 +136,7 @@ def _run_job(
     question: str,
     on_progress: Optional[ProgressCallback],
     on_complete: Optional[CompleteCallback],
+    language: str = "English",
 ) -> None:
     """Execute the pipeline in a background thread and persist all state."""
     job = _jobs_cache[job_id]
@@ -150,6 +152,7 @@ def _run_job(
             output_dir=f"output/{job_id}",
             on_stage=lambda stage: _set_status(job, job_id, stage, on_progress),
             on_event=on_event,
+            language=language,
         )
 
         job.report = state.final_report
